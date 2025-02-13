@@ -12,10 +12,10 @@ import (
 )
 
 type OAuthService struct {
-	store *storage.MemoryStorage
+	store *storage.PostgresStorage
 }
 
-func NewOAuthService(store *storage.MemoryStorage) *OAuthService {
+func NewOAuthService(store *storage.PostgresStorage) *OAuthService {
 	return &OAuthService{store: store}
 }
 
@@ -48,14 +48,16 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID, userID string, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	if err != nil {
+		return "", err
+	}
 	return code, nil
 }
 
 func (s *OAuthService) ExchangeToken(req *models.TokenRequest) (string, string, error) {
-	// Validate grant type
 	if req.GrantType != "authorization_code" && req.GrantType != "refresh_token" {
 		return "", "", errors.New("unsupported grant type")
 	}
@@ -68,13 +70,11 @@ func (s *OAuthService) ExchangeToken(req *models.TokenRequest) (string, string, 
 }
 
 func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (string, string, error) {
-	// Validate authorization code
 	authCode := s.store.GetAuthCode(req.Code)
 	if authCode == nil {
 		return "", "", errors.New("invalid authorization code")
 	}
 
-	// Validate code verifier with PKCE
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {
 		return "", "", err
 	}
@@ -86,36 +86,46 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 	}
 
 	refreshToken := utils.GenerateRandomString(32)
-	s.store.StoreRefreshToken(refreshToken, authCode.UserID)
+	err = s.store.StoreRefreshToken(refreshToken, authCode.UserID, authCode.ClientID)
+	if err != nil {
+		return "", "", err
+	}
 
 	return accessToken, refreshToken, nil
 }
 
-// Implementasi handleRefreshTokenGrant
 func (s *OAuthService) handleRefreshTokenGrant(req *models.TokenRequest) (string, string, error) {
 	if req.RefreshToken == "" {
 		return "", "", errors.New("refresh token is required")
 	}
 
-	userID := s.store.GetRefreshToken(req.RefreshToken)
-	if userID == "" {
+	refreshToken := s.store.GetRefreshToken(req.RefreshToken)
+	if refreshToken == nil {
 		return "", "", errors.New("invalid refresh token")
 	}
 
+	// Delete the used refresh token
+	if err := s.store.DeleteRefreshToken(req.RefreshToken); err != nil {
+		return "", "", err
+	}
+
 	// Generate new access token
-	accessToken, err := utils.GenerateJWT(userID, time.Hour)
+	accessToken, err := utils.GenerateJWT(refreshToken.UserID, time.Hour)
 	if err != nil {
 		return "", "", err
 	}
 
 	// Generate new refresh token
 	newRefreshToken := utils.GenerateRandomString(32)
-	s.store.StoreRefreshToken(newRefreshToken, userID)
+	err = s.store.StoreRefreshToken(newRefreshToken, refreshToken.UserID, refreshToken.ClientID)
+	if err != nil {
+		return "", "", err
+	}
 
 	return accessToken, newRefreshToken, nil
 }
 
-func (s *OAuthService) validatePKCE(authCode *storage.AuthCode, codeVerifier string) error {
+func (s *OAuthService) validatePKCE(authCode *models.AuthCode, codeVerifier string) error {
 	if authCode.CodeChallenge == "" {
 		return errors.New("code challenge not found")
 	}

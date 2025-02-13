@@ -4,8 +4,10 @@ import (
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
 	"log"
+	"oauth2-provider/config"
 	"oauth2-provider/handlers"
 	"oauth2-provider/middleware"
+	"oauth2-provider/models"
 	"oauth2-provider/services"
 	"oauth2-provider/storage"
 )
@@ -20,8 +22,20 @@ func main() {
 	e.Use(echoMiddleware.CORS())
 	e.Use(echoMiddleware.RateLimiter(echoMiddleware.NewRateLimiterMemoryStore(20)))
 
-	// Initialize storage
-	store := storage.NewMemoryStorage()
+	// Initialize database
+	db, err := config.InitDB()
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+
+	// Auto migrate database schema
+	err = db.AutoMigrate(&models.User{}, &models.Client{}, &models.AuthCode{}, &models.RefreshToken{})
+	if err != nil {
+		log.Fatalf("Failed to migrate database: %v", err)
+	}
+
+	// Initialize storage with database
+	store := storage.NewPostgresStorage(db)
 
 	// Initialize services
 	oauthService := services.NewOAuthService(store)

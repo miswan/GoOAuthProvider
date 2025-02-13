@@ -2,6 +2,7 @@ package storage
 
 import (
 	"oauth2-provider/models"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -9,33 +10,34 @@ import (
 type AuthCode struct {
 	Code               string
 	ClientID           string
-	UserID             string
-	ExpiresAt         time.Time
-	CodeChallenge     string
+	UserID             uint
+	ExpiresAt          time.Time
+	CodeChallenge      string
 	CodeChallengeMethod string
 }
 
 type MemoryStorage struct {
-	users        map[string]*models.User
-	clients      map[string]*models.Client
-	authCodes    map[string]*AuthCode
+	users         map[uint]*models.User
+	clients       map[string]*models.Client
+	authCodes     map[string]*AuthCode
 	refreshTokens map[string]string
-	mu           sync.RWMutex
+	mu            sync.RWMutex
 }
 
 func NewMemoryStorage() *MemoryStorage {
 	return &MemoryStorage{
-		users:         make(map[string]*models.User),
+		users:         make(map[uint]*models.User),
 		clients:       make(map[string]*models.Client),
 		authCodes:     make(map[string]*AuthCode),
 		refreshTokens: make(map[string]string),
 	}
 }
 
-func (s *MemoryStorage) StoreUser(user *models.User) {
+func (s *MemoryStorage) StoreUser(user *models.User) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.users[user.ID] = user
+	return nil
 }
 
 func (s *MemoryStorage) GetUserByUsername(username string) *models.User {
@@ -55,14 +57,14 @@ func (s *MemoryStorage) GetClient(clientID string) *models.Client {
 	return s.clients[clientID]
 }
 
-// Menambahkan method StoreClient yang hilang
-func (s *MemoryStorage) StoreClient(client *models.Client) {
+func (s *MemoryStorage) StoreClient(client *models.Client) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.clients[client.ID] = client
+	s.clients[client.ClientID] = client
+	return nil
 }
 
-func (s *MemoryStorage) StoreAuthCode(code, clientID, userID string) {
+func (s *MemoryStorage) StoreAuthCode(code, clientID string, userID uint) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.authCodes[code] = &AuthCode{
@@ -71,6 +73,7 @@ func (s *MemoryStorage) StoreAuthCode(code, clientID, userID string) {
 		UserID:    userID,
 		ExpiresAt: time.Now().Add(10 * time.Minute),
 	}
+	return nil
 }
 
 func (s *MemoryStorage) GetAuthCode(code string) *AuthCode {
@@ -82,29 +85,36 @@ func (s *MemoryStorage) GetAuthCode(code string) *AuthCode {
 	return nil
 }
 
-func (s *MemoryStorage) StoreRefreshToken(token, userID string) {
+func (s *MemoryStorage) StoreRefreshToken(token string, userID uint, clientID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.refreshTokens[token] = userID
+	s.refreshTokens[token] = strconv.FormatUint(uint64(userID), 10)
+	return nil
 }
 
-// Menambahkan method untuk mendukung PKCE
-func (s *MemoryStorage) StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod string) {
+func (s *MemoryStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, codeChallenge, codeChallengeMethod string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.authCodes[code] = &AuthCode{
 		Code:               code,
 		ClientID:           clientID,
-		UserID:            userID,
-		ExpiresAt:         time.Now().Add(10 * time.Minute),
-		CodeChallenge:     codeChallenge,
+		UserID:             userID,
+		ExpiresAt:          time.Now().Add(10 * time.Minute),
+		CodeChallenge:      codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
 	}
+	return nil
 }
 
-// Menambahkan method GetRefreshToken
 func (s *MemoryStorage) GetRefreshToken(token string) string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.refreshTokens[token]
+}
+
+func (s *MemoryStorage) DeleteRefreshToken(token string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.refreshTokens, token)
+	return nil
 }

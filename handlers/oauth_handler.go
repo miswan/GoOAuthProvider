@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
+	"strconv"
 )
 
 type OAuthHandler struct {
@@ -29,7 +30,7 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 	// In real implementation, check session and show login/consent page
 	code, err := h.oauthService.GenerateAuthorizationCode(
 		req.ClientID,
-		"user123",
+		1, // Temporary userID for testing
 		req.CodeChallenge,
 		req.CodeChallengeMethod,
 	)
@@ -63,11 +64,12 @@ func (h *OAuthHandler) Token(c echo.Context) error {
 }
 
 func (h *OAuthHandler) UserInfo(c echo.Context) error {
-	// Implementation for userinfo endpoint
-	// This should validate the access token and return user information
-	return c.JSON(http.StatusOK, map[string]string{
-		"sub": c.Get("user_id").(string),
-		"name": "John Doe",
+	userIDStr := c.Get("user_id").(string)
+	userID, _ := strconv.ParseUint(userIDStr, 10, 64)
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"sub":   userID,
+		"name":  "John Doe",
 		"email": "john@example.com",
 	})
 }

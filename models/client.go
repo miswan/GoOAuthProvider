@@ -1,19 +1,20 @@
 package models
 
 import (
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
 type Client struct {
 	gorm.Model
-	ClientID     string   `gorm:"uniqueIndex;not null"`
-	Secret       string   `gorm:"not null"`
-	RedirectURIs []string `gorm:"type:text[]"`
-	GrantTypes   []string `gorm:"type:text[]"`
+	ClientID     string         `gorm:"uniqueIndex;not null"`
+	Secret       string         `gorm:"not null"`
+	RedirectURIs pq.StringArray `gorm:"type:text[];not null"`
+	GrantTypes   pq.StringArray `gorm:"type:text[];not null"`
 }
 
 type ClientRegistration struct {
-	RedirectURIs []string `json:"redirect_uris" validate:"required,min=1,dive,url"`
+	RedirectURIs []string `json:"redirect_uris" validate:"required,min=1"`
 }
 
 type AuthorizationRequest struct {

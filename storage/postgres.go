@@ -28,8 +28,11 @@ func (s *PostgresStorage) GetUserByUsername(username string) *models.User {
 }
 
 func (s *PostgresStorage) StoreClient(client *models.Client) error {
+	// Generate client credentials
 	client.ClientID = utils.GenerateRandomString(24)
 	client.Secret = utils.GenerateRandomString(32)
+
+	// Store client with arrays
 	return s.db.Create(client).Error
 }
 
@@ -54,7 +57,7 @@ func (s *PostgresStorage) StoreAuthCode(code, clientID string, userID uint) erro
 func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, codeChallenge, codeChallengeMethod string) error {
 	authCode := &models.AuthCode{
 		Code:                code,
-		ClientID:           clientID,
+		ClientID:            clientID,
 		UserID:             userID,
 		ExpiresAt:          time.Now().Add(10 * time.Minute),
 		CodeChallenge:      codeChallenge,
@@ -68,10 +71,10 @@ func (s *PostgresStorage) GetAuthCode(code string) *models.AuthCode {
 	if err := s.db.Where("code = ? AND expires_at > ? AND used = ?", code, time.Now(), false).First(&authCode).Error; err != nil {
 		return nil
 	}
-	
+
 	// Mark the auth code as used
 	s.db.Model(&authCode).Update("used", true)
-	
+
 	return &authCode
 }
 

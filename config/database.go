@@ -15,7 +15,15 @@ func InitDB() (*gorm.DB, error) {
 	log.Printf("Connecting to database with DSN: %s", dsn)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger.New(
+			log.New(os.Stdout, "\r\n", log.LstdFlags),
+			logger.Config{
+				SlowThreshold:             time.Second,
+				LogLevel:                  logger.Info,
+				IgnoreRecordNotFoundError: false,
+				Colorful:                  true,
+			},
+		),
 		NowFunc: func() time.Time {
 			return time.Now().UTC()
 		},

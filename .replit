@@ -1,4 +1,4 @@
-modules = ["go", "go-1.21", "python-3.11"]
+modules = ["go", "go-1.21", "python-3.11", "postgresql-16"]
 
 [nix]
 channel = "stable-24_05"
@@ -28,7 +28,6 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "go run ."
-waitForPort = 8000
 
 [deployment]
 run = ["sh", "-c", "go run ."]

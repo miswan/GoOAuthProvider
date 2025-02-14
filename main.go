@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
+	"gorm.io/gorm"
 	"log"
 	"oauth2-provider/config"
 	"oauth2-provider/handlers"
@@ -11,6 +12,16 @@ import (
 	"oauth2-provider/services"
 	"oauth2-provider/storage"
 )
+
+func migrateModel(db *gorm.DB, model interface{}, modelName string) error {
+	log.Printf("Starting migration for %s model...", modelName)
+	if err := db.AutoMigrate(model); err != nil {
+		log.Printf("Failed to migrate %s model. Error: %v", modelName, err)
+		return err
+	}
+	log.Printf("%s model migration completed successfully", modelName)
+	return nil
+}
 
 func main() {
 	log.Println("Starting OAuth2 Provider application...")
@@ -34,12 +45,32 @@ func main() {
 	}
 	log.Println("Successfully connected to database")
 
-	// Auto migrate database schema
+	// Auto migrate database schema one by one with detailed error logging
 	log.Println("Starting database migration...")
-	err = db.AutoMigrate(&models.User{}, &models.Client{}, &models.AuthCode{}, &models.RefreshToken{})
-	if err != nil {
-		log.Fatalf("Failed to migrate database: %v", err)
+
+	// Migrate User model
+	if err := migrateModel(db, &models.User{}, "User"); err != nil {
+		log.Fatalf("Database migration failed at User model: %v", err)
 	}
+
+	// Migrate Client model with extra logging
+	log.Println("Attempting to migrate Client model...")
+	if err := migrateModel(db, &models.Client{}, "Client"); err != nil {
+		// Print the schema of the Client model for debugging
+		log.Printf("Client model schema: %+v", &models.Client{})
+		log.Fatalf("Database migration failed at Client model: %v", err)
+	}
+
+	// Migrate AuthCode model
+	if err := migrateModel(db, &models.AuthCode{}, "AuthCode"); err != nil {
+		log.Fatalf("Database migration failed at AuthCode model: %v", err)
+	}
+
+	// Migrate RefreshToken model
+	if err := migrateModel(db, &models.RefreshToken{}, "RefreshToken"); err != nil {
+		log.Fatalf("Database migration failed at RefreshToken model: %v", err)
+	}
+
 	log.Println("Database migration completed successfully")
 
 	// Initialize storage with database

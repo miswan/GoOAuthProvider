@@ -15,9 +15,13 @@ func NewClientService(store *storage.PostgresStorage) *ClientService {
 }
 
 func (s *ClientService) RegisterClient(req *models.ClientRegistration) (*models.Client, error) {
+	// Convert []string to pq.StringArray explicitly
+	redirectURIs := make(pq.StringArray, len(req.RedirectURIs))
+	copy(redirectURIs, req.RedirectURIs)
+
 	client := &models.Client{
-		RedirectURIs: pq.StringArray(req.RedirectURIs),
-		GrantTypes:   pq.StringArray([]string{"authorization_code"}),
+		RedirectURIs: redirectURIs,
+		GrantTypes:   pq.StringArray{"authorization_code"},
 	}
 
 	err := s.store.StoreClient(client)

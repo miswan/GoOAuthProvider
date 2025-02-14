@@ -9,8 +9,8 @@ type Client struct {
 	gorm.Model
 	ClientID     string         `gorm:"uniqueIndex;not null"`
 	Secret       string         `gorm:"not null"`
-	RedirectURIs pq.StringArray `gorm:"type:text[];not null"`
-	GrantTypes   pq.StringArray `gorm:"type:text[];not null"`
+	RedirectURIs pq.StringArray `gorm:"type:text[]"`
+	GrantTypes   pq.StringArray `gorm:"type:text[]"`
 }
 
 type ClientRegistration struct {

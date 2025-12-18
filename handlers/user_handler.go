@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
+	"oauth2-provider/utils"
 	"strconv"
+	"time"
 )
 
 type UserHandler struct {
@@ -41,6 +43,21 @@ func (h *UserHandler) Login(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
 	}
+
+	// Set session cookie
+	// Use JWT for session to ensure integrity
+	sessionToken, err := utils.GenerateJWT(user.ID, 24*time.Hour)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate session")
+	}
+
+	cookie := new(http.Cookie)
+	cookie.Name = "session_token"
+	cookie.Value = sessionToken
+	cookie.Path = "/"
+	cookie.HttpOnly = true
+	// cookie.Secure = true // Enable in production with HTTPS
+	c.SetCookie(cookie)
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"message": "Login successful",

@@ -3,8 +3,10 @@ package handlers
 import (
 	"github.com/labstack/echo/v4"
 	"net/http"
+	"net/url"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
+	"oauth2-provider/utils"
 	"strconv"
 )
 
@@ -26,11 +28,26 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	// For simplicity, assuming user is already authenticated
-	// In real implementation, check session and show login/consent page
+	// Check for user authentication
+	cookie, err := c.Cookie("session_token")
+	if err != nil {
+		// In a real app, we would redirect to login page here
+		return echo.NewHTTPError(http.StatusUnauthorized, "User not authenticated")
+	}
+
+	claims, err := utils.ValidateJWT(cookie.Value)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid user session")
+	}
+
+	userID, err := strconv.ParseUint(claims.Subject, 10, 64)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid user ID in session")
+	}
+
 	code, err := h.oauthService.GenerateAuthorizationCode(
 		req.ClientID,
-		1, // Temporary userID for testing
+		uint(userID),
 		req.CodeChallenge,
 		req.CodeChallengeMethod,
 	)
@@ -38,10 +55,17 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{
-		"code":  code,
-		"state": req.State,
-	})
+	// Redirect to the client's redirect_uri with code and state
+	u, err := url.Parse(req.RedirectURI)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid redirect URI")
+	}
+	q := u.Query()
+	q.Set("code", code)
+	q.Set("state", req.State)
+	u.RawQuery = q.Encode()
+
+	return c.Redirect(http.StatusFound, u.String())
 }
 
 func (h *OAuthHandler) Token(c echo.Context) error {
@@ -65,11 +89,19 @@ func (h *OAuthHandler) Token(c echo.Context) error {
 
 func (h *OAuthHandler) UserInfo(c echo.Context) error {
 	userIDStr := c.Get("user_id").(string)
-	userID, _ := strconv.ParseUint(userIDStr, 10, 64)
+	userID, err := strconv.ParseUint(userIDStr, 10, 64)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid user ID")
+	}
+
+	user, err := h.oauthService.GetUserByID(uint(userID))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "User not found")
+	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"sub":   userID,
-		"name":  "John Doe",
-		"email": "john@example.com",
+		"sub":      user.ID,
+		"username": user.Username,
+		"email":    user.Email,
 	})
 }

@@ -3,6 +3,8 @@ package main
 import (
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
+	"html/template"
+	"io"
 	"gorm.io/gorm"
 	"log"
 	"oauth2-provider/config"
@@ -12,6 +14,14 @@ import (
 	"oauth2-provider/services"
 	"oauth2-provider/storage"
 )
+
+type TemplateRenderer struct {
+	templates *template.Template
+}
+
+func (t *TemplateRenderer) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
+	return t.templates.ExecuteTemplate(w, name, data)
+}
 
 func migrateModel(db *gorm.DB, model interface{}, modelName string) error {
 	log.Printf("Starting migration for %s model...", modelName)
@@ -28,6 +38,13 @@ func main() {
 
 	// Initialize Echo
 	e := echo.New()
+
+	// Register Template Renderer
+	renderer := &TemplateRenderer{
+		templates: template.Must(template.ParseGlob("templates/*.html")),
+	}
+	e.Renderer = renderer
+
 	log.Println("Echo framework initialized")
 
 	// Middleware
@@ -90,6 +107,8 @@ func main() {
 	log.Println("Handlers initialized")
 
 	// Routes
+	e.GET("/", handlers.Home)
+
 	// OAuth2 endpoints
 	e.GET("/authorize", oauthHandler.Authorize)
 	e.POST("/token", oauthHandler.Token)

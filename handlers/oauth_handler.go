@@ -3,8 +3,10 @@ package handlers
 import (
 	"github.com/labstack/echo/v4"
 	"net/http"
+	"net/url"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
+	"oauth2-provider/utils"
 	"strconv"
 )
 
@@ -26,11 +28,30 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	// For simplicity, assuming user is already authenticated
-	// In real implementation, check session and show login/consent page
+	// Check session
+	cookie, err := c.Cookie("session_token")
+	if err != nil || cookie.Value == "" {
+		// Redirect to login
+		// We need to construct the full return URL.
+		// Since we are in the handler, `c.Request().RequestURI` should contain the path and query string.
+		return c.Redirect(http.StatusFound, "/login?return_to="+url.QueryEscape(c.Request().RequestURI))
+	}
+
+	claims, err := utils.ValidateJWT(cookie.Value)
+	if err != nil {
+		// Invalid token, redirect to login
+		return c.Redirect(http.StatusFound, "/login?return_to="+url.QueryEscape(c.Request().RequestURI))
+	}
+
+	userID, err := strconv.ParseUint(claims.Subject, 10, 64)
+	if err != nil {
+		// If subject is not a valid user ID, treat as invalid session
+		return c.Redirect(http.StatusFound, "/login?return_to="+url.QueryEscape(c.Request().RequestURI))
+	}
+
 	code, err := h.oauthService.GenerateAuthorizationCode(
 		req.ClientID,
-		1, // Temporary userID for testing
+		uint(userID),
 		req.CodeChallenge,
 		req.CodeChallengeMethod,
 	)
@@ -38,10 +59,20 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{
-		"code":  code,
-		"state": req.State,
-	})
+	// Redirect back to client with code and state
+	redirectURL, err := url.Parse(req.RedirectURI)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid redirect URI")
+	}
+
+	query := redirectURL.Query()
+	query.Set("code", code)
+	if req.State != "" {
+		query.Set("state", req.State)
+	}
+	redirectURL.RawQuery = query.Encode()
+
+	return c.Redirect(http.StatusFound, redirectURL.String())
 }
 
 func (h *OAuthHandler) Token(c echo.Context) error {
@@ -64,12 +95,18 @@ func (h *OAuthHandler) Token(c echo.Context) error {
 }
 
 func (h *OAuthHandler) UserInfo(c echo.Context) error {
-	userIDStr := c.Get("user_id").(string)
-	userID, _ := strconv.ParseUint(userIDStr, 10, 64)
+	userIDVal := c.Get("user_id")
+	userIDStr, ok := userIDVal.(string)
+	if !ok {
+		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid user session")
+	}
+
+	userID, err := strconv.ParseUint(userIDStr, 10, 64)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Invalid user ID format")
+	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"sub":   userID,
-		"name":  "John Doe",
-		"email": "john@example.com",
+		"sub": userID,
 	})
 }

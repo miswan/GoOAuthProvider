@@ -8,11 +8,11 @@ import (
 )
 
 type AuthCode struct {
-	Code               string
-	ClientID           string
-	UserID             uint
-	ExpiresAt          time.Time
-	CodeChallenge      string
+	Code                string
+	ClientID            string
+	UserID              uint
+	ExpiresAt           time.Time
+	CodeChallenge       string
 	CodeChallengeMethod string
 }
 
@@ -96,11 +96,11 @@ func (s *MemoryStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.authCodes[code] = &AuthCode{
-		Code:               code,
-		ClientID:           clientID,
-		UserID:             userID,
-		ExpiresAt:          time.Now().Add(10 * time.Minute),
-		CodeChallenge:      codeChallenge,
+		Code:                code,
+		ClientID:            clientID,
+		UserID:              userID,
+		ExpiresAt:           time.Now().Add(10 * time.Minute),
+		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
 	}
 	return nil

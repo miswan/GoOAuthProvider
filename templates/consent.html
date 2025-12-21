@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Consent - OAuth2 Provider</title>
+</head>
+<body>
+    <h1>Authorize Application</h1>
+    <p>The application <strong>{{.ClientName}}</strong> wants to access your account.</p>
+
+    <form action="/authorize/consent" method="POST">
+        <input type="hidden" name="client_id" value="{{.ClientID}}">
+        <input type="hidden" name="state" value="{{.State}}">
+        <input type="hidden" name="redirect_uri" value="{{.RedirectURI}}">
+        <input type="hidden" name="code_challenge" value="{{.CodeChallenge}}">
+        <input type="hidden" name="code_challenge_method" value="{{.CodeChallengeMethod}}">
+
+        <div>
+            <button type="submit" name="allow" value="true">Allow</button>
+            <button type="submit" name="allow" value="false">Deny</button>
+        </div>
+    </form>
+</body>
+</html>

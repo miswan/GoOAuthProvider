@@ -11,6 +11,7 @@ import (
 	"oauth2-provider/models"
 	"oauth2-provider/services"
 	"oauth2-provider/storage"
+	"oauth2-provider/utils"
 )
 
 func migrateModel(db *gorm.DB, model interface{}, modelName string) error {
@@ -28,6 +29,7 @@ func main() {
 
 	// Initialize Echo
 	e := echo.New()
+	e.Renderer = utils.NewTemplateRenderer()
 	log.Println("Echo framework initialized")
 
 	// Middleware
@@ -90,13 +92,17 @@ func main() {
 	log.Println("Handlers initialized")
 
 	// Routes
+	e.GET("/", handlers.HomeHandler)
+
 	// OAuth2 endpoints
 	e.GET("/authorize", oauthHandler.Authorize)
+	e.POST("/authorize/consent", oauthHandler.ApproveConsent)
 	e.POST("/token", oauthHandler.Token)
 	e.GET("/userinfo", oauthHandler.UserInfo, middleware.JWTAuth)
 
 	// User management
 	e.POST("/register", userHandler.Register)
+	e.GET("/login", userHandler.LoginPage)
 	e.POST("/login", userHandler.Login)
 
 	// Client management

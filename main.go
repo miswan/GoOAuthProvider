@@ -90,6 +90,9 @@ func main() {
 	log.Println("Handlers initialized")
 
 	// Routes
+	// Root endpoint
+	e.GET("/", handlers.Home)
+
 	// OAuth2 endpoints
 	e.GET("/authorize", oauthHandler.Authorize)
 	e.POST("/token", oauthHandler.Token)

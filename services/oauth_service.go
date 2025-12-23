@@ -48,6 +48,14 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
+func (s *OAuthService) GetUserByID(userID uint) (*models.User, error) {
+	user := s.store.GetUserByID(userID)
+	if user == nil {
+		return nil, errors.New("user not found")
+	}
+	return user, nil
+}
+
 func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
 	code := utils.GenerateRandomString(32)
 	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)

@@ -97,6 +97,7 @@ func main() {
 
 	// User management
 	e.POST("/register", userHandler.Register)
+	e.GET("/login", userHandler.LoginPage)
 	e.POST("/login", userHandler.Login)
 
 	// Client management

@@ -75,8 +75,21 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 		return "", "", errors.New("invalid authorization code")
 	}
 
+	// Check if client_id matches the one in auth code
+	if authCode.ClientID != req.ClientID {
+		return "", "", errors.New("client_id mismatch")
+	}
+
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {
 		return "", "", err
+	}
+
+	// Validate client secret if provided (confidential client)
+	if req.ClientSecret != "" {
+		client := s.store.GetClient(req.ClientID)
+		if client == nil || client.Secret != req.ClientSecret {
+			return "", "", errors.New("invalid client secret")
+		}
 	}
 
 	// Generate tokens

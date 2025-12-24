@@ -91,12 +91,14 @@ func main() {
 
 	// Routes
 	// OAuth2 endpoints
-	e.GET("/authorize", oauthHandler.Authorize)
+	// Use SessionAuth middleware for Authorize endpoint to populates user_id from session cookie
+	e.GET("/authorize", oauthHandler.Authorize, middleware.SessionAuth)
 	e.POST("/token", oauthHandler.Token)
 	e.GET("/userinfo", oauthHandler.UserInfo, middleware.JWTAuth)
 
 	// User management
 	e.POST("/register", userHandler.Register)
+	e.GET("/login", userHandler.LoginView)
 	e.POST("/login", userHandler.Login)
 
 	// Client management

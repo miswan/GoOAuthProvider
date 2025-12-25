@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OAuth2 Provider - Welcome</title>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --text: #1F2937;
+            --bg: #F9FAFB;
+            --card-bg: #FFFFFF;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+        main {
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            max-width: 28rem;
+            width: 90%;
+            text-align: center;
+        }
+        h1 {
+            color: var(--primary);
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        p {
+            color: #4B5563;
+            margin-bottom: 1.5rem;
+        }
+        .status {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            background-color: #ECFDF5;
+            color: #065F46;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        .status::before {
+            content: "";
+            display: block;
+            width: 0.5rem;
+            height: 0.5rem;
+            background-color: #10B981;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <main role="main">
+        <h1>OAuth2 Provider</h1>
+        <p>The authorization server is running and ready to handle requests.</p>
+        <div class="status" role="status" aria-label="System Status: Operational">
+            System Operational
+        </div>
+    </main>
+</body>
+</html>

@@ -75,6 +75,11 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 		return "", "", errors.New("invalid authorization code")
 	}
 
+	// Validate ClientID
+	if authCode.ClientID != req.ClientID {
+		return "", "", errors.New("invalid client_id")
+	}
+
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {
 		return "", "", err
 	}

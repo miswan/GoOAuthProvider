@@ -3,8 +3,10 @@ package handlers
 import (
 	"github.com/labstack/echo/v4"
 	"net/http"
+	"net/url"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
+	"oauth2-provider/utils"
 	"strconv"
 )
 
@@ -26,11 +28,26 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	// For simplicity, assuming user is already authenticated
-	// In real implementation, check session and show login/consent page
+	// Check authentication
+	cookie, err := c.Cookie("session_token")
+	var userID uint
+	if err == nil {
+		claims, err := utils.ValidateJWT(cookie.Value)
+		if err == nil {
+			uid, _ := strconv.ParseUint(claims.Subject, 10, 64)
+			userID = uint(uid)
+		}
+	}
+
+	if userID == 0 {
+		// Not authenticated, redirect to login
+		returnTo := c.Request().URL.String()
+		return c.Redirect(http.StatusFound, "/login?return_to="+url.QueryEscape(returnTo))
+	}
+
 	code, err := h.oauthService.GenerateAuthorizationCode(
 		req.ClientID,
-		1, // Temporary userID for testing
+		userID,
 		req.CodeChallenge,
 		req.CodeChallengeMethod,
 	)
@@ -38,10 +55,16 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{
-		"code":  code,
-		"state": req.State,
-	})
+	// Redirect back to client
+	redirectURL, _ := url.Parse(req.RedirectURI)
+	q := redirectURL.Query()
+	q.Set("code", code)
+	if req.State != "" {
+		q.Set("state", req.State)
+	}
+	redirectURL.RawQuery = q.Encode()
+
+	return c.Redirect(http.StatusFound, redirectURL.String())
 }
 
 func (h *OAuthHandler) Token(c echo.Context) error {

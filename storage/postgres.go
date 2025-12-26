@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"gorm.io/gorm"
 	"oauth2-provider/models"
 	"oauth2-provider/utils"
@@ -27,6 +28,14 @@ func (s *PostgresStorage) GetUserByUsername(username string) *models.User {
 		return nil
 	}
 	return &user
+}
+
+func (s *PostgresStorage) GetUserByID(userID uint) (*models.User, error) {
+	var user models.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
 }
 
 func (s *PostgresStorage) StoreClient(client *models.Client) error {
@@ -93,11 +102,19 @@ func (s *PostgresStorage) GetAuthCode(code string) *models.AuthCode {
 		log.Printf("Error getting auth code: %v", err)
 		return nil
 	}
-
-	// Mark the auth code as used
-	s.db.Model(&authCode).Update("used", true)
-
+	// Note: We don't mark as used here anymore, explicit call required
 	return &authCode
+}
+
+func (s *PostgresStorage) MarkAuthCodeAsUsed(code string) error {
+	result := s.db.Model(&models.AuthCode{}).Where("code = ? AND used = ?", code, false).Update("used", true)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("authorization code already used or invalid")
+	}
+	return nil
 }
 
 func (s *PostgresStorage) StoreRefreshToken(token string, userID uint, clientID string) error {

@@ -75,7 +75,29 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 		return "", "", errors.New("invalid authorization code")
 	}
 
+	if authCode.Used {
+		return "", "", errors.New("authorization code already used")
+	}
+
+	// Validate client ID matches
+	if authCode.ClientID != req.ClientID {
+		return "", "", errors.New("client_id mismatch")
+	}
+
+	// Validate client secret if provided
+	if req.ClientSecret != "" {
+		client := s.store.GetClient(req.ClientID)
+		if client == nil || client.Secret != req.ClientSecret {
+			return "", "", errors.New("invalid client secret")
+		}
+	}
+
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {
+		return "", "", err
+	}
+
+	// Mark code as used
+	if err := s.store.MarkAuthCodeAsUsed(req.Code); err != nil {
 		return "", "", err
 	}
 
@@ -135,6 +157,8 @@ func (s *OAuthService) validatePKCE(authCode *models.AuthCode, codeVerifier stri
 		h := sha256.New()
 		h.Write([]byte(codeVerifier))
 		computedChallenge = base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+		// Handle potential padding issues if any, but RawURLEncoding usually handles it.
+		// Standard says base64url-encoded without padding.
 	} else { // plain
 		computedChallenge = codeVerifier
 	}
@@ -144,4 +168,8 @@ func (s *OAuthService) validatePKCE(authCode *models.AuthCode, codeVerifier stri
 	}
 
 	return nil
+}
+
+func (s *OAuthService) GetUserByID(userID uint) (*models.User, error) {
+	return s.store.GetUserByID(userID)
 }

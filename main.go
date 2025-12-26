@@ -1,9 +1,8 @@
 package main
 
 import (
-	"github.com/labstack/echo/v4"
-	echoMiddleware "github.com/labstack/echo/v4/middleware"
-	"gorm.io/gorm"
+	"html/template"
+	"io"
 	"log"
 	"oauth2-provider/config"
 	"oauth2-provider/handlers"
@@ -11,6 +10,10 @@ import (
 	"oauth2-provider/models"
 	"oauth2-provider/services"
 	"oauth2-provider/storage"
+
+	"github.com/labstack/echo/v4"
+	echoMiddleware "github.com/labstack/echo/v4/middleware"
+	"gorm.io/gorm"
 )
 
 func migrateModel(db *gorm.DB, model interface{}, modelName string) error {
@@ -21,6 +24,16 @@ func migrateModel(db *gorm.DB, model interface{}, modelName string) error {
 	}
 	log.Printf("%s model migration completed successfully", modelName)
 	return nil
+}
+
+// TemplateRenderer is a custom html/template renderer for Echo framework
+type TemplateRenderer struct {
+	templates *template.Template
+}
+
+// Render renders a template document
+func (t *TemplateRenderer) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
+	return t.templates.ExecuteTemplate(w, name, data)
 }
 
 func main() {
@@ -36,6 +49,12 @@ func main() {
 	e.Use(echoMiddleware.CORS())
 	e.Use(echoMiddleware.RateLimiter(echoMiddleware.NewRateLimiterMemoryStore(20)))
 	log.Println("Middleware configured successfully")
+
+	// Template Renderer
+	renderer := &TemplateRenderer{
+		templates: template.Must(template.ParseGlob("handlers/templates/*.html")),
+	}
+	e.Renderer = renderer
 
 	log.Println("Attempting to connect to database...")
 	// Initialize database
@@ -87,9 +106,14 @@ func main() {
 	oauthHandler := handlers.NewOAuthHandler(oauthService)
 	userHandler := handlers.NewUserHandler(userService)
 	clientHandler := handlers.NewClientHandler(clientService)
+	htmlHandler := handlers.NewHTMLHandler()
 	log.Println("Handlers initialized")
 
 	// Routes
+	// HTML endpoints
+	e.GET("/login", htmlHandler.ShowLogin)
+	e.GET("/register", htmlHandler.ShowRegister)
+
 	// OAuth2 endpoints
 	e.GET("/authorize", oauthHandler.Authorize)
 	e.POST("/token", oauthHandler.Token)

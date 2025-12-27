@@ -87,9 +87,16 @@ func main() {
 	oauthHandler := handlers.NewOAuthHandler(oauthService)
 	userHandler := handlers.NewUserHandler(userService)
 	clientHandler := handlers.NewClientHandler(clientService)
+	htmlHandler := handlers.NewHTMLHandler()
 	log.Println("Handlers initialized")
 
+	// Template Renderer
+	e.Renderer = handlers.NewTemplateRenderer()
+
 	// Routes
+	// Web Interface
+	e.GET("/", htmlHandler.Index)
+
 	// OAuth2 endpoints
 	e.GET("/authorize", oauthHandler.Authorize)
 	e.POST("/token", oauthHandler.Token)

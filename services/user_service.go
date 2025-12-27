@@ -8,10 +8,10 @@ import (
 )
 
 type UserService struct {
-	store *storage.PostgresStorage
+	store storage.Storage
 }
 
-func NewUserService(store *storage.PostgresStorage) *UserService {
+func NewUserService(store storage.Storage) *UserService {
 	return &UserService{store: store}
 }
 

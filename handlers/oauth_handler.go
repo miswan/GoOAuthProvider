@@ -3,8 +3,10 @@ package handlers
 import (
 	"github.com/labstack/echo/v4"
 	"net/http"
+	"net/url"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
+	"oauth2-provider/utils"
 	"strconv"
 )
 
@@ -17,6 +19,27 @@ func NewOAuthHandler(oauthService *services.OAuthService) *OAuthHandler {
 }
 
 func (h *OAuthHandler) Authorize(c echo.Context) error {
+	// Check for existing session token
+	cookie, err := c.Cookie("session_token")
+	if err != nil {
+		// No session, redirect to login with current URL as redirect_to
+		redirectURL := c.Request().URL.String()
+		return c.Redirect(http.StatusFound, "/login?redirect_to="+redirectURL)
+	}
+
+	claims, err := utils.ValidateJWT(cookie.Value)
+	if err != nil {
+		// Invalid session, redirect to login
+		redirectURL := c.Request().URL.String()
+		return c.Redirect(http.StatusFound, "/login?redirect_to="+redirectURL)
+	}
+
+	// User is authenticated, proceed with authorization
+	userID, err := strconv.ParseUint(claims.Subject, 10, 64)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "invalid user id in session")
+	}
+
 	req := new(models.AuthorizationRequest)
 	if err := c.Bind(req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
@@ -26,11 +49,10 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	// For simplicity, assuming user is already authenticated
-	// In real implementation, check session and show login/consent page
 	code, err := h.oauthService.GenerateAuthorizationCode(
 		req.ClientID,
-		1, // Temporary userID for testing
+		uint(userID),
+		req.RedirectURI,
 		req.CodeChallenge,
 		req.CodeChallengeMethod,
 	)
@@ -38,10 +60,20 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{
-		"code":  code,
-		"state": req.State,
-	})
+	// Redirect back to client with code and state
+	redirectURL, err := url.Parse(req.RedirectURI)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid redirect uri")
+	}
+
+	query := redirectURL.Query()
+	query.Set("code", code)
+	if req.State != "" {
+		query.Set("state", req.State)
+	}
+	redirectURL.RawQuery = query.Encode()
+
+	return c.Redirect(http.StatusFound, redirectURL.String())
 }
 
 func (h *OAuthHandler) Token(c echo.Context) error {

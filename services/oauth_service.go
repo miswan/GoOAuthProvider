@@ -48,9 +48,9 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, redirectURI, codeChallenge, codeChallengeMethod)
 	if err != nil {
 		return "", err
 	}
@@ -73,6 +73,25 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 	authCode := s.store.GetAuthCode(req.Code)
 	if authCode == nil {
 		return "", "", errors.New("invalid authorization code")
+	}
+
+	// Validate Client ID
+	if authCode.ClientID != req.ClientID {
+		return "", "", errors.New("client_id mismatch")
+	}
+
+	// Validate Redirect URI
+	if authCode.RedirectURI != req.RedirectURI {
+		return "", "", errors.New("redirect_uri mismatch")
+	}
+
+	// Validate Client Secret if provided or required
+	client := s.store.GetClient(req.ClientID)
+	if client == nil {
+		return "", "", errors.New("invalid client")
+	}
+	if req.ClientSecret != "" && req.ClientSecret != client.Secret {
+		return "", "", errors.New("invalid client_secret")
 	}
 
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {

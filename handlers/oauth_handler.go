@@ -3,8 +3,10 @@ package handlers
 import (
 	"github.com/labstack/echo/v4"
 	"net/http"
+	"net/url"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
+	"oauth2-provider/utils"
 	"strconv"
 )
 
@@ -26,11 +28,31 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	// For simplicity, assuming user is already authenticated
-	// In real implementation, check session and show login/consent page
+	// Check if user is authenticated
+	cookie, err := c.Cookie("session_token")
+	if err != nil {
+		// Not authenticated, redirect to login
+		// Construct current URL to redirect back to
+		q := c.Request().URL.Query()
+		currentURL := "/authorize?" + q.Encode()
+		return c.Redirect(http.StatusFound, "/login?redirect_to="+url.QueryEscape(currentURL))
+	}
+
+	// Validate session token
+	claims, err := utils.ValidateJWT(cookie.Value)
+	if err != nil {
+		// Invalid token, redirect to login
+		q := c.Request().URL.Query()
+		currentURL := "/authorize?" + q.Encode()
+		return c.Redirect(http.StatusFound, "/login?redirect_to="+url.QueryEscape(currentURL))
+	}
+
+	userID, _ := strconv.ParseUint(claims.Subject, 10, 64)
+
 	code, err := h.oauthService.GenerateAuthorizationCode(
 		req.ClientID,
-		1, // Temporary userID for testing
+		uint(userID),
+		req.RedirectURI,
 		req.CodeChallenge,
 		req.CodeChallengeMethod,
 	)
@@ -38,10 +60,20 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{
-		"code":  code,
-		"state": req.State,
-	})
+	// Redirect back to client
+	redirectURL, err := url.Parse(req.RedirectURI)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid redirect URI")
+	}
+
+	q := redirectURL.Query()
+	q.Set("code", code)
+	if req.State != "" {
+		q.Set("state", req.State)
+	}
+	redirectURL.RawQuery = q.Encode()
+
+	return c.Redirect(http.StatusFound, redirectURL.String())
 }
 
 func (h *OAuthHandler) Token(c echo.Context) error {

@@ -1,0 +1,82 @@
+2025/12/28 05:26:51 Starting OAuth2 Provider application...
+2025/12/28 05:26:51 Echo framework initialized
+2025/12/28 05:26:51 Middleware configured successfully
+2025/12/28 05:26:51 Attempting to connect to database...
+2025/12/28 05:26:51 Connecting to database with DSN: postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable
+2025/12/28 05:26:51 Successfully connected to database
+2025/12/28 05:26:51 Successfully connected to database
+2025/12/28 05:26:51 Starting database migration...
+2025/12/28 05:26:51 Starting migration for User model...
+
+2025/12/28 05:26:51 [32m/app/main.go:18
+[0m[33m[13.107ms] [34;1m[rows:1][0m SELECT count(*) FROM information_schema.tables WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'users' AND table_type = 'BASE TABLE'
+
+2025/12/28 05:26:51 [32m/app/main.go:18
+[0m[33m[11.772ms] [34;1m[rows:0][0m CREATE TABLE "users" ("id" bigserial,"created_at" timestamptz,"updated_at" timestamptz,"deleted_at" timestamptz,"username" text NOT NULL,"password" text NOT NULL,"email" text NOT NULL,PRIMARY KEY ("id"))
+
+2025/12/28 05:26:51 [32m/app/main.go:18
+[0m[33m[3.445ms] [34;1m[rows:0][0m CREATE INDEX IF NOT EXISTS "idx_users_deleted_at" ON "users" ("deleted_at")
+
+2025/12/28 05:26:51 [32m/app/main.go:18
+[0m[33m[2.915ms] [34;1m[rows:0][0m CREATE UNIQUE INDEX IF NOT EXISTS "idx_users_email" ON "users" ("email")
+
+2025/12/28 05:26:51 [32m/app/main.go:18
+[0m[33m[2.687ms] [34;1m[rows:0][0m CREATE UNIQUE INDEX IF NOT EXISTS "idx_users_username" ON "users" ("username")
+2025/12/28 05:26:51 User model migration completed successfully
+2025/12/28 05:26:51 Attempting to migrate Client model...
+2025/12/28 05:26:51 Starting migration for Client model...
+
+2025/12/28 05:26:51 [32m/app/main.go:18
+[0m[33m[1.879ms] [34;1m[rows:1][0m SELECT count(*) FROM information_schema.tables WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'clients' AND table_type = 'BASE TABLE'
+
+2025/12/28 05:26:51 [32m/app/main.go:18
+[0m[33m[7.122ms] [34;1m[rows:0][0m CREATE TABLE "clients" ("id" bigserial,"created_at" timestamptz,"updated_at" timestamptz,"deleted_at" timestamptz,"client_id" text NOT NULL,"secret" text NOT NULL,"redirect_uris" text[],"grant_types" text[],PRIMARY KEY ("id"))
+
+2025/12/28 05:26:51 [32m/app/main.go:18
+[0m[33m[3.176ms] [34;1m[rows:0][0m CREATE UNIQUE INDEX IF NOT EXISTS "idx_client_id" ON "clients" ("client_id")
+
+2025/12/28 05:26:51 [32m/app/main.go:18
+[0m[33m[2.586ms] [34;1m[rows:0][0m CREATE INDEX IF NOT EXISTS "idx_clients_deleted_at" ON "clients" ("deleted_at")
+2025/12/28 05:26:51 Client model migration completed successfully
+2025/12/28 05:26:51 Starting migration for AuthCode model...
+
+2025/12/28 05:26:51 [32m/app/main.go:18
+[0m[33m[1.547ms] [34;1m[rows:1][0m SELECT count(*) FROM information_schema.tables WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'auth_codes' AND table_type = 'BASE TABLE'
+
+2025/12/28 05:26:51 [32m/app/main.go:18
+[0m[33m[6.606ms] [34;1m[rows:0][0m CREATE TABLE "auth_codes" ("id" bigserial,"created_at" timestamptz,"updated_at" timestamptz,"deleted_at" timestamptz,"code" text,"client_id" text,"user_id" bigint,"redirect_uri" text,"expires_at" timestamptz,"code_challenge" text,"code_challenge_method" text,"used" boolean,PRIMARY KEY ("id"))
+
+2025/12/28 05:26:52 [32m/app/main.go:18
+[0m[33m[2.470ms] [34;1m[rows:0][0m CREATE INDEX IF NOT EXISTS "idx_auth_codes_deleted_at" ON "auth_codes" ("deleted_at")
+2025/12/28 05:26:52 AuthCode model migration completed successfully
+2025/12/28 05:26:52 Starting migration for RefreshToken model...
+
+2025/12/28 05:26:52 [32m/app/main.go:18
+[0m[33m[1.563ms] [34;1m[rows:1][0m SELECT count(*) FROM information_schema.tables WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'refresh_tokens' AND table_type = 'BASE TABLE'
+
+2025/12/28 05:26:52 [32m/app/main.go:18
+[0m[33m[5.978ms] [34;1m[rows:0][0m CREATE TABLE "refresh_tokens" ("id" bigserial,"created_at" timestamptz,"updated_at" timestamptz,"deleted_at" timestamptz,"token" text NOT NULL,"user_id" bigint NOT NULL,"client_id" text NOT NULL,"expires_at" timestamptz,PRIMARY KEY ("id"))
+
+2025/12/28 05:26:52 [32m/app/main.go:18
+[0m[33m[2.474ms] [34;1m[rows:0][0m CREATE UNIQUE INDEX IF NOT EXISTS "idx_refresh_tokens_token" ON "refresh_tokens" ("token")
+
+2025/12/28 05:26:52 [32m/app/main.go:18
+[0m[33m[2.444ms] [34;1m[rows:0][0m CREATE INDEX IF NOT EXISTS "idx_refresh_tokens_deleted_at" ON "refresh_tokens" ("deleted_at")
+2025/12/28 05:26:52 RefreshToken model migration completed successfully
+2025/12/28 05:26:52 Database migration completed successfully
+2025/12/28 05:26:52 PostgreSQL storage initialized
+2025/12/28 05:26:52 Services initialized
+2025/12/28 05:26:52 Handlers initialized
+2025/12/28 05:26:52 Routes configured
+2025/12/28 05:26:52 Starting server on port 8000...
+
+   ____    __
+  / __/___/ /  ___
+ / _// __/ _ \/ _ \
+/___/\__/_//_/\___/ v4.11.4
+High performance, minimalist Go web framework
+https://echo.labstack.com
+____________________________________O/_______
+                                    O\
+⇨ http server started on [::]:8000
+{"time":"2025-12-28T05:28:01.894551569Z","id":"","remote_ip":"::1","host":"localhost:8000","method":"GET","uri":"/login","user_agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/140.0.7339.16 Safari/537.36","status":200,"error":"","latency":154418,"latency_human":"154.418µs","bytes_in":0,"bytes_out":1536}

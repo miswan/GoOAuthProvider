@@ -28,6 +28,7 @@ func main() {
 
 	// Initialize Echo
 	e := echo.New()
+	e.Renderer = handlers.NewTemplateRenderer()
 	log.Println("Echo framework initialized")
 
 	// Middleware
@@ -87,6 +88,7 @@ func main() {
 	oauthHandler := handlers.NewOAuthHandler(oauthService)
 	userHandler := handlers.NewUserHandler(userService)
 	clientHandler := handlers.NewClientHandler(clientService)
+	htmlHandler := handlers.NewHTMLHandler()
 	log.Println("Handlers initialized")
 
 	// Routes
@@ -97,6 +99,7 @@ func main() {
 
 	// User management
 	e.POST("/register", userHandler.Register)
+	e.GET("/login", htmlHandler.Login)
 	e.POST("/login", userHandler.Login)
 
 	// Client management

@@ -75,7 +75,7 @@ func (s *PostgresStorage) StoreAuthCode(code, clientID string, userID uint) erro
 	return s.db.Create(authCode).Error
 }
 
-func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, codeChallenge, codeChallengeMethod string) error {
+func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, codeChallenge, codeChallengeMethod, scope, redirectURI string) error {
 	authCode := &models.AuthCode{
 		Code:                code,
 		ClientID:            clientID,
@@ -83,6 +83,8 @@ func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID ui
 		ExpiresAt:          time.Now().Add(10 * time.Minute),
 		CodeChallenge:      codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
+		Scope:               scope,
+		RedirectURI:        redirectURI,
 	}
 	return s.db.Create(authCode).Error
 }
@@ -100,11 +102,12 @@ func (s *PostgresStorage) GetAuthCode(code string) *models.AuthCode {
 	return &authCode
 }
 
-func (s *PostgresStorage) StoreRefreshToken(token string, userID uint, clientID string) error {
+func (s *PostgresStorage) StoreRefreshToken(token string, userID uint, clientID string, scope string) error {
 	refreshToken := &models.RefreshToken{
 		Token:     token,
 		UserID:    userID,
 		ClientID:  clientID,
+		Scope:     scope,
 		ExpiresAt: time.Now().Add(24 * time.Hour * 30), // 30 days
 	}
 	return s.db.Create(refreshToken).Error

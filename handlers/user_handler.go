@@ -5,7 +5,10 @@ import (
 	"net/http"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
+	"oauth2-provider/utils"
 	"strconv"
+	"strings"
+	"time"
 )
 
 type UserHandler struct {
@@ -40,6 +43,28 @@ func (h *UserHandler) Login(c echo.Context) error {
 	user, err := h.userService.Login(req)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
+	}
+
+	// Generate session token
+	token, err := utils.GenerateJWT(user.ID, 24*time.Hour)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate session token")
+	}
+
+	// Set cookie
+	cookie := new(http.Cookie)
+	cookie.Name = "session_token"
+	cookie.Value = token
+	cookie.Path = "/"
+	cookie.HttpOnly = true
+	// cookie.Secure = true // Enable in production
+	cookie.Expires = time.Now().Add(24 * time.Hour)
+	c.SetCookie(cookie)
+
+	redirectTo := c.FormValue("redirect_to")
+	// Prevent Open Redirect: Only allow relative paths
+	if redirectTo != "" && strings.HasPrefix(redirectTo, "/") {
+		return c.Redirect(http.StatusFound, redirectTo)
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{

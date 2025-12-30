@@ -24,8 +24,9 @@ type AuthorizationRequest struct {
 	ClientID            string `query:"client_id" validate:"required"`
 	RedirectURI         string `query:"redirect_uri" validate:"required,url"`
 	ResponseType        string `query:"response_type" validate:"required,oneof=code"`
+	Scope               string `query:"scope"` // Added Scope
 	State               string `query:"state"`
-	CodeChallenge      string `query:"code_challenge" validate:"required"`
+	CodeChallenge       string `query:"code_challenge" validate:"required"`
 	CodeChallengeMethod string `query:"code_challenge_method" validate:"required,oneof=S256 plain"`
 }
 

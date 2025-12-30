@@ -48,9 +48,9 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod, scope, redirectURI string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod, scope, redirectURI)
 	if err != nil {
 		return "", err
 	}
@@ -75,6 +75,11 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 		return "", "", errors.New("invalid authorization code")
 	}
 
+	// Check if redirect URI matches
+	if authCode.RedirectURI != req.RedirectURI {
+		return "", "", errors.New("redirect uri mismatch")
+	}
+
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {
 		return "", "", err
 	}
@@ -86,7 +91,7 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 	}
 
 	refreshToken := utils.GenerateRandomString(32)
-	err = s.store.StoreRefreshToken(refreshToken, authCode.UserID, authCode.ClientID)
+	err = s.store.StoreRefreshToken(refreshToken, authCode.UserID, authCode.ClientID, authCode.Scope)
 	if err != nil {
 		return "", "", err
 	}
@@ -117,7 +122,7 @@ func (s *OAuthService) handleRefreshTokenGrant(req *models.TokenRequest) (string
 
 	// Generate new refresh token
 	newRefreshToken := utils.GenerateRandomString(32)
-	err = s.store.StoreRefreshToken(newRefreshToken, refreshToken.UserID, refreshToken.ClientID)
+	err = s.store.StoreRefreshToken(newRefreshToken, refreshToken.UserID, refreshToken.ClientID, refreshToken.Scope)
 	if err != nil {
 		return "", "", err
 	}

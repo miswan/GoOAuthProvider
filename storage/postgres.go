@@ -75,11 +75,12 @@ func (s *PostgresStorage) StoreAuthCode(code, clientID string, userID uint) erro
 	return s.db.Create(authCode).Error
 }
 
-func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, codeChallenge, codeChallengeMethod string) error {
+func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) error {
 	authCode := &models.AuthCode{
 		Code:                code,
 		ClientID:            clientID,
 		UserID:             userID,
+		RedirectURI:        redirectURI,
 		ExpiresAt:          time.Now().Add(10 * time.Minute),
 		CodeChallenge:      codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,

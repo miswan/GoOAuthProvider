@@ -48,9 +48,9 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, redirectURI, codeChallenge, codeChallengeMethod)
 	if err != nil {
 		return "", err
 	}
@@ -73,6 +73,33 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 	authCode := s.store.GetAuthCode(req.Code)
 	if authCode == nil {
 		return "", "", errors.New("invalid authorization code")
+	}
+
+	// Validate ClientID
+	if authCode.ClientID != req.ClientID {
+		return "", "", errors.New("invalid client_id")
+	}
+
+	// Validate RedirectURI
+	if authCode.RedirectURI != req.RedirectURI {
+		return "", "", errors.New("invalid redirect_uri")
+	}
+
+	// Validate Client Secret if provided or if client is confidential
+	// Check if client exists
+	client := s.store.GetClient(req.ClientID)
+	if client != nil {
+		// If the client record has a secret (Confidential Client), we MUST validate it.
+		// If the client record has no secret (Public Client), we only validate if one was sent (optional/mismatch check).
+		if client.Secret != "" {
+			if client.Secret != req.ClientSecret {
+				return "", "", errors.New("invalid client_secret")
+			}
+		} else if req.ClientSecret != "" {
+			// Optional: if client has no secret but request sends one, it's a mismatch or error
+			// For now, we can ignore or return error. Let's strict match if provided.
+			// But since DB secret is empty, we just pass.
+		}
 	}
 
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {

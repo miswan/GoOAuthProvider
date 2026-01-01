@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"github.com/labstack/echo/v4"
 	"net/http"
 	"oauth2-provider/models"
@@ -17,6 +18,13 @@ func NewOAuthHandler(oauthService *services.OAuthService) *OAuthHandler {
 }
 
 func (h *OAuthHandler) Authorize(c echo.Context) error {
+	// Get user ID from session context
+	userIDStr, ok := c.Get("user_id").(string)
+	if !ok {
+		return echo.NewHTTPError(http.StatusUnauthorized, "User not authenticated")
+	}
+	userID, _ := strconv.ParseUint(userIDStr, 10, 64)
+
 	req := new(models.AuthorizationRequest)
 	if err := c.Bind(req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
@@ -26,11 +34,10 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	// For simplicity, assuming user is already authenticated
-	// In real implementation, check session and show login/consent page
 	code, err := h.oauthService.GenerateAuthorizationCode(
 		req.ClientID,
-		1, // Temporary userID for testing
+		uint(userID),
+		req.RedirectURI,
 		req.CodeChallenge,
 		req.CodeChallengeMethod,
 	)
@@ -38,10 +45,9 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{
-		"code":  code,
-		"state": req.State,
-	})
+	// Redirect back to the client application with the authorization code
+	redirectURL := fmt.Sprintf("%s?code=%s&state=%s", req.RedirectURI, code, req.State)
+	return c.Redirect(http.StatusFound, redirectURL)
 }
 
 func (h *OAuthHandler) Token(c echo.Context) error {
@@ -67,9 +73,14 @@ func (h *OAuthHandler) UserInfo(c echo.Context) error {
 	userIDStr := c.Get("user_id").(string)
 	userID, _ := strconv.ParseUint(userIDStr, 10, 64)
 
+	user, err := h.oauthService.GetUserByID(uint(userID))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "User not found")
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"sub":   userID,
-		"name":  "John Doe",
-		"email": "john@example.com",
+		"name":  user.Username,
+		"email": user.Email,
 	})
 }

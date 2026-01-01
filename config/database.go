@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -14,7 +15,15 @@ func InitDB() (*gorm.DB, error) {
 	dsn := os.Getenv("DATABASE_URL")
 	log.Printf("Connecting to database with DSN: %s", dsn)
 
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+	var dialector gorm.Dialector
+	if dsn == "" {
+		log.Println("DATABASE_URL not set, using sqlite in memory")
+		dialector = sqlite.Open(":memory:")
+	} else {
+		dialector = postgres.Open(dsn)
+	}
+
+	db, err := gorm.Open(dialector, &gorm.Config{
 		Logger: logger.New(
 			log.New(os.Stdout, "\r\n", log.LstdFlags),
 			logger.Config{

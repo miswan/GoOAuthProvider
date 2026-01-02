@@ -3,6 +3,7 @@ package handlers
 import (
 	"github.com/labstack/echo/v4"
 	"net/http"
+	"net/url"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
 	"strconv"
@@ -26,11 +27,26 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	// For simplicity, assuming user is already authenticated
-	// In real implementation, check session and show login/consent page
+	// Check for authentication
+	userIDStr, ok := c.Get("user_id").(string)
+	if !ok {
+		// Not authenticated, redirect to login
+		// Construct the current URL to redirect back to
+		// We need to reconstruct the full URL including query params
+		requestURI := c.Request().RequestURI
+		redirectURL := url.QueryEscape(requestURI)
+		return c.Redirect(http.StatusFound, "/login?redirect_to="+redirectURL)
+	}
+	userID, err := strconv.ParseUint(userIDStr, 10, 64)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Invalid user ID in session")
+	}
+
+	// Generate authorization code
 	code, err := h.oauthService.GenerateAuthorizationCode(
 		req.ClientID,
-		1, // Temporary userID for testing
+		uint(userID),
+		req.RedirectURI,
 		req.CodeChallenge,
 		req.CodeChallengeMethod,
 	)
@@ -38,10 +54,19 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{
-		"code":  code,
-		"state": req.State,
-	})
+	// Redirect to the client's redirect URI with code and state
+	u, err := url.Parse(req.RedirectURI)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid redirect URI")
+	}
+	q := u.Query()
+	q.Set("code", code)
+	if req.State != "" {
+		q.Set("state", req.State)
+	}
+	u.RawQuery = q.Encode()
+
+	return c.Redirect(http.StatusFound, u.String())
 }
 
 func (h *OAuthHandler) Token(c echo.Context) error {

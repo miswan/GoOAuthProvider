@@ -26,11 +26,21 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	// For simplicity, assuming user is already authenticated
-	// In real implementation, check session and show login/consent page
+	// Check user authentication via session middleware (expected to be set in context)
+	userIDStr := c.Get("user_id")
+	if userIDStr == nil {
+		// If no user is authenticated, redirect to login page
+		// We preserve the current URL parameters to redirect back after login
+		loginURL := "/login?redirect_to=" + c.Request().RequestURI
+		return c.Redirect(http.StatusFound, loginURL)
+	}
+
+	userID, _ := strconv.ParseUint(userIDStr.(string), 10, 64)
+
 	code, err := h.oauthService.GenerateAuthorizationCode(
 		req.ClientID,
-		1, // Temporary userID for testing
+		uint(userID),
+		req.RedirectURI,
 		req.CodeChallenge,
 		req.CodeChallengeMethod,
 	)

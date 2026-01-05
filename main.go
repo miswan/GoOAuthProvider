@@ -91,7 +91,7 @@ func main() {
 
 	// Routes
 	// OAuth2 endpoints
-	e.GET("/authorize", oauthHandler.Authorize)
+	e.GET("/authorize", oauthHandler.Authorize, middleware.SessionAuthMiddleware)
 	e.POST("/token", oauthHandler.Token)
 	e.GET("/userinfo", oauthHandler.UserInfo, middleware.JWTAuth)
 

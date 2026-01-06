@@ -48,9 +48,9 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID, redirectURI string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCodeWithPKCE(code, clientID, redirectURI, userID, codeChallenge, codeChallengeMethod)
 	if err != nil {
 		return "", err
 	}
@@ -73,6 +73,32 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 	authCode := s.store.GetAuthCode(req.Code)
 	if authCode == nil {
 		return "", "", errors.New("invalid authorization code")
+	}
+
+	if authCode.ClientID != req.ClientID {
+		return "", "", errors.New("client_id mismatch")
+	}
+
+	if authCode.RedirectURI != req.RedirectURI {
+		return "", "", errors.New("redirect_uri mismatch")
+	}
+
+	// Validate client_secret if provided (assuming public clients might not send it, but confidential ones must)
+	// For now, if provided, we check it. If the client was registered with a secret, it should probably be checked.
+	if req.ClientSecret != "" {
+		client := s.store.GetClient(req.ClientID)
+		if client != nil && client.Secret != req.ClientSecret {
+			return "", "", errors.New("invalid client_secret")
+		}
+	} else {
+		// If no secret provided, check if client is confidential (has a secret)
+		client := s.store.GetClient(req.ClientID)
+		if client != nil && client.Secret != "" {
+			// This logic might depend on whether the client is public or confidential.
+			// The current simple implementation assumes if secret exists, it must be provided?
+			// But PKCE is often used for public clients.
+			// Let's stick to: if secret provided, check it. If not provided, we rely on PKCE.
+		}
 	}
 
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {

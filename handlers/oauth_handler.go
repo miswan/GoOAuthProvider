@@ -30,6 +30,7 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 	// In real implementation, check session and show login/consent page
 	code, err := h.oauthService.GenerateAuthorizationCode(
 		req.ClientID,
+		req.RedirectURI,
 		1, // Temporary userID for testing
 		req.CodeChallenge,
 		req.CodeChallengeMethod,

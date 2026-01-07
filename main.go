@@ -90,18 +90,26 @@ func main() {
 	log.Println("Handlers initialized")
 
 	// Routes
-	// OAuth2 endpoints
-	e.GET("/authorize", oauthHandler.Authorize)
-	e.POST("/token", oauthHandler.Token)
-	e.GET("/userinfo", oauthHandler.UserInfo, middleware.JWTAuth)
 
-	// User management
+	// Public routes
 	e.POST("/register", userHandler.Register)
 	e.POST("/login", userHandler.Login)
+	e.GET("/login", userHandler.ShowLogin) // Show login page
 
 	// Client management
 	e.POST("/client/register", clientHandler.Register)
 	e.GET("/client/:id", clientHandler.Get, middleware.JWTAuth)
+
+	// OAuth2 endpoints
+	// Authorize endpoint uses SessionAuthMiddleware to check for cookie-based session
+	e.GET("/authorize", oauthHandler.Authorize, middleware.SessionAuthMiddleware)
+
+	e.POST("/token", oauthHandler.Token)
+
+	// Protected resources
+	e.GET("/userinfo", oauthHandler.UserInfo, middleware.JWTAuth)
+
+
 	log.Println("Routes configured")
 
 	// Start server

@@ -2,9 +2,9 @@ package services
 
 import (
 	"github.com/lib/pq"
+	"log"
 	"oauth2-provider/models"
 	"oauth2-provider/storage"
-	"log"
 )
 
 type ClientService struct {

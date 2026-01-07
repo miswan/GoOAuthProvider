@@ -25,7 +25,7 @@ type AuthorizationRequest struct {
 	RedirectURI         string `query:"redirect_uri" validate:"required,url"`
 	ResponseType        string `query:"response_type" validate:"required,oneof=code"`
 	State               string `query:"state"`
-	CodeChallenge      string `query:"code_challenge" validate:"required"`
+	CodeChallenge       string `query:"code_challenge" validate:"required"`
 	CodeChallengeMethod string `query:"code_challenge_method" validate:"required,oneof=S256 plain"`
 }
 

@@ -6,6 +6,7 @@ import (
 	"oauth2-provider/utils"
 	"time"
 	"log"
+	"github.com/lib/pq"
 )
 
 type PostgresStorage struct {
@@ -39,10 +40,10 @@ func (s *PostgresStorage) StoreClient(client *models.Client) error {
 
 	// Ensure arrays are initialized
 	if len(client.RedirectURIs) == 0 {
-		client.RedirectURIs = []string{}
+		client.RedirectURIs = pq.StringArray{}
 	}
 	if len(client.GrantTypes) == 0 {
-		client.GrantTypes = []string{"authorization_code"}
+		client.GrantTypes = pq.StringArray{"authorization_code"}
 	}
 
 	// Create client using GORM with SQL logging enabled
@@ -66,6 +67,8 @@ func (s *PostgresStorage) GetClient(clientID string) *models.Client {
 }
 
 func (s *PostgresStorage) StoreAuthCode(code, clientID string, userID uint) error {
+	// This method might be deprecated in favor of StoreAuthCodeWithPKCE, but keeping it for compatibility if needed.
+	// It doesn't support RedirectURI or PKCE.
 	authCode := &models.AuthCode{
 		Code:      code,
 		ClientID:  clientID,
@@ -75,11 +78,12 @@ func (s *PostgresStorage) StoreAuthCode(code, clientID string, userID uint) erro
 	return s.db.Create(authCode).Error
 }
 
-func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, codeChallenge, codeChallengeMethod string) error {
+func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) error {
 	authCode := &models.AuthCode{
 		Code:                code,
 		ClientID:            clientID,
 		UserID:             userID,
+		RedirectURI:        redirectURI,
 		ExpiresAt:          time.Now().Add(10 * time.Minute),
 		CodeChallenge:      codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
@@ -95,6 +99,8 @@ func (s *PostgresStorage) GetAuthCode(code string) *models.AuthCode {
 	}
 
 	// Mark the auth code as used
+	// Note: It's better to mark it used *after* successful validation in service, but to prevent race conditions/replay attacks, marking it here or inside a transaction is safer.
+	// Given the simple structure, marking it here is okay, but it means if validation fails, the code is burned. This is standard security practice.
 	s.db.Model(&authCode).Update("used", true)
 
 	return &authCode

@@ -28,6 +28,9 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	// Validate redirect URI
 	validURI := false
 	for _, uri := range client.RedirectURIs {
+		// Use the utility function to check domain matching if needed, but typically exact match is safer for security.
+		// However, query params might differ.
+		// Standard says exact match.
 		if uri == req.RedirectURI {
 			validURI = true
 			break
@@ -48,9 +51,9 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, redirectURI, codeChallenge, codeChallengeMethod)
 	if err != nil {
 		return "", err
 	}
@@ -73,6 +76,17 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 	authCode := s.store.GetAuthCode(req.Code)
 	if authCode == nil {
 		return "", "", errors.New("invalid authorization code")
+	}
+
+	// Validate ClientID
+	if authCode.ClientID != req.ClientID {
+		return "", "", errors.New("client_id mismatch")
+	}
+
+	// Validate RedirectURI
+	// The redirect_uri included in the token request must match the one used in the authorization request.
+	if authCode.RedirectURI != req.RedirectURI {
+		return "", "", errors.New("redirect_uri mismatch")
 	}
 
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {
@@ -138,6 +152,9 @@ func (s *OAuthService) validatePKCE(authCode *models.AuthCode, codeVerifier stri
 	} else { // plain
 		computedChallenge = codeVerifier
 	}
+
+	// Trim padding if any, although RawURLEncoding shouldn't have padding.
+	// Standard says Base64URL-encoded (no padding).
 
 	if !strings.EqualFold(computedChallenge, authCode.CodeChallenge) {
 		return errors.New("invalid code verifier")

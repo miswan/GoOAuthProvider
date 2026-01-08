@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 	"oauth2-provider/models"
 	"oauth2-provider/utils"
@@ -39,10 +40,10 @@ func (s *PostgresStorage) StoreClient(client *models.Client) error {
 
 	// Ensure arrays are initialized
 	if len(client.RedirectURIs) == 0 {
-		client.RedirectURIs = []string{}
+		client.RedirectURIs = pq.StringArray{}
 	}
 	if len(client.GrantTypes) == 0 {
-		client.GrantTypes = []string{"authorization_code"}
+		client.GrantTypes = pq.StringArray{"authorization_code"}
 	}
 
 	// Create client using GORM with SQL logging enabled
@@ -75,7 +76,7 @@ func (s *PostgresStorage) StoreAuthCode(code, clientID string, userID uint) erro
 	return s.db.Create(authCode).Error
 }
 
-func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, codeChallenge, codeChallengeMethod string) error {
+func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, codeChallenge, codeChallengeMethod string, redirectURI string) error {
 	authCode := &models.AuthCode{
 		Code:                code,
 		ClientID:            clientID,
@@ -83,6 +84,7 @@ func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID ui
 		ExpiresAt:          time.Now().Add(10 * time.Minute),
 		CodeChallenge:      codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
+		RedirectURI:        redirectURI,
 	}
 	return s.db.Create(authCode).Error
 }

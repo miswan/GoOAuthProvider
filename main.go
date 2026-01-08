@@ -35,6 +35,9 @@ func main() {
 	e.Use(echoMiddleware.Recover())
 	e.Use(echoMiddleware.CORS())
 	e.Use(echoMiddleware.RateLimiter(echoMiddleware.NewRateLimiterMemoryStore(20)))
+	// Add session middleware globally or specifically for authorize endpoint
+	e.Use(middleware.SessionAuthMiddleware)
+
 	log.Println("Middleware configured successfully")
 
 	log.Println("Attempting to connect to database...")
@@ -97,7 +100,8 @@ func main() {
 
 	// User management
 	e.POST("/register", userHandler.Register)
-	e.POST("/login", userHandler.Login)
+	e.GET("/login", userHandler.Login) // Serve login page
+	e.POST("/login", userHandler.Login) // Handle login
 
 	// Client management
 	e.POST("/client/register", clientHandler.Register)

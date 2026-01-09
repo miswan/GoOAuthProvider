@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
+	"oauth2-provider/utils"
 	"strconv"
 )
 
@@ -26,11 +27,31 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	// For simplicity, assuming user is already authenticated
-	// In real implementation, check session and show login/consent page
+	// Check for session
+	userIDVal := c.Get("user_id")
+	if userIDVal == nil {
+		// Not authenticated, redirect to login
+		// Include the current URL as redirect_to so user comes back here after login
+		loginURL := "/login?redirect_to=" + c.Request().RequestURI
+		return c.Redirect(http.StatusFound, loginURL)
+	}
+
+	// Parse user ID safely
+	userIDStr, ok := userIDVal.(string)
+	if !ok {
+		// Should not happen if middleware is correct
+		return echo.NewHTTPError(http.StatusInternalServerError, "Invalid user session")
+	}
+	userID64, err := strconv.ParseUint(userIDStr, 10, 64)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Invalid user ID in session")
+	}
+	userID := uint(userID64)
+
 	code, err := h.oauthService.GenerateAuthorizationCode(
 		req.ClientID,
-		1, // Temporary userID for testing
+		userID,
+		req.RedirectURI,
 		req.CodeChallenge,
 		req.CodeChallengeMethod,
 	)
@@ -38,10 +59,16 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{
+	// Redirect back to client with code
+	redirectURL, err := utils.BuildRedirectURL(req.RedirectURI, map[string]string{
 		"code":  code,
 		"state": req.State,
 	})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid redirect URI")
+	}
+
+	return c.Redirect(http.StatusFound, redirectURL)
 }
 
 func (h *OAuthHandler) Token(c echo.Context) error {
@@ -55,11 +82,11 @@ func (h *OAuthHandler) Token(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{
+	return c.JSON(http.StatusOK, map[string]interface{}{
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
 		"token_type":    "Bearer",
-		"expires_in":    "3600",
+		"expires_in":    3600,
 	})
 }
 

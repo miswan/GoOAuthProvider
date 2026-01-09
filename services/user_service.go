@@ -1,6 +1,7 @@
 package services
 
 import (
+	"time"
 	"errors"
 	"oauth2-provider/models"
 	"oauth2-provider/storage"
@@ -45,4 +46,10 @@ func (s *UserService) Login(req *models.UserLogin) (*models.User, error) {
 	}
 
 	return user, nil
+}
+
+func (s *UserService) GenerateSessionToken(user *models.User) (string, error) {
+	// Generate a JWT token for the session
+	// Using a longer expiration for session cookies (e.g., 24 hours)
+	return utils.GenerateJWT(user.ID, 24 * time.Hour) // 24 hours
 }

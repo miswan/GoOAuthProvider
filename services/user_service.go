@@ -5,6 +5,7 @@ import (
 	"oauth2-provider/models"
 	"oauth2-provider/storage"
 	"oauth2-provider/utils"
+	"time"
 )
 
 type UserService struct {
@@ -45,4 +46,11 @@ func (s *UserService) Login(req *models.UserLogin) (*models.User, error) {
 	}
 
 	return user, nil
+}
+
+func (s *UserService) GenerateSessionToken(userID uint) (string, error) {
+	// Re-using JWT for session token for simplicity
+	// In a real app, this might be a random string stored in DB or Redis
+	// But stateless JWT in cookie is also a valid pattern
+	return utils.GenerateJWT(userID, 24*time.Hour)
 }

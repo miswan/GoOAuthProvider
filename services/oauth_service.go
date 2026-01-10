@@ -48,9 +48,9 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod, redirectURI string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCodeWithPKCE(code, clientID, redirectURI, userID, codeChallenge, codeChallengeMethod)
 	if err != nil {
 		return "", err
 	}
@@ -58,6 +58,25 @@ func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, c
 }
 
 func (s *OAuthService) ExchangeToken(req *models.TokenRequest) (string, string, error) {
+	// Authenticate client
+	// If the client exists and has a secret, we MUST validate it (Confidential Client).
+	// If the client exists and has NO secret, it's a Public Client (we don't check secret).
+	// But in this simple implementation, we assume all clients in DB have secrets.
+	// However, we should check if the client exists first.
+	client := s.store.GetClient(req.ClientID)
+	if client == nil {
+		return "", "", errors.New("invalid client")
+	}
+
+	// If client has a secret stored, we must validate it.
+	// If the request provides a secret, it must match.
+	// If the request does NOT provide a secret, we must check if the client requires one.
+	if client.Secret != "" {
+		if req.ClientSecret == "" || req.ClientSecret != client.Secret {
+			return "", "", errors.New("invalid client credentials")
+		}
+	}
+
 	if req.GrantType != "authorization_code" && req.GrantType != "refresh_token" {
 		return "", "", errors.New("unsupported grant type")
 	}
@@ -73,6 +92,16 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 	authCode := s.store.GetAuthCode(req.Code)
 	if authCode == nil {
 		return "", "", errors.New("invalid authorization code")
+	}
+
+	// Validate ClientID
+	if authCode.ClientID != req.ClientID {
+		return "", "", errors.New("invalid client id")
+	}
+
+	// Validate RedirectURI
+	if authCode.RedirectURI != req.RedirectURI {
+		return "", "", errors.New("invalid redirect uri")
 	}
 
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {

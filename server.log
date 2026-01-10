@@ -1,0 +1,10 @@
+2026/01/10 05:32:52 Starting OAuth2 Provider application...
+2026/01/10 05:32:52 Echo framework initialized
+2026/01/10 05:32:52 Middleware configured successfully
+2026/01/10 05:32:52 Attempting to connect to database...
+2026/01/10 05:32:52 Connecting to database with DSN:
+
+2026/01/10 05:32:52 [35m/app/config/database.go:17
+[0m[31m[error] [0mfailed to initialize database, got error failed to connect to `host=/tmp user=jules database=`: dial error (dial unix /tmp/.s.PGSQL.5432: connect: no such file or directory)
+2026/01/10 05:32:52 Failed to connect to database: failed to connect to `host=/tmp user=jules database=`: dial error (dial unix /tmp/.s.PGSQL.5432: connect: no such file or directory)
+2026/01/10 05:32:52 Failed to connect to database: failed to connect to database: failed to connect to `host=/tmp user=jules database=`: dial error (dial unix /tmp/.s.PGSQL.5432: connect: no such file or directory)

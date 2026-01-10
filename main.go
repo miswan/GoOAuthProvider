@@ -91,13 +91,15 @@ func main() {
 
 	// Routes
 	// OAuth2 endpoints
-	e.GET("/authorize", oauthHandler.Authorize)
+	// The authorize endpoint requires a session (login)
+	e.GET("/authorize", oauthHandler.Authorize, middleware.SessionAuthMiddleware, middleware.RequireSession)
 	e.POST("/token", oauthHandler.Token)
 	e.GET("/userinfo", oauthHandler.UserInfo, middleware.JWTAuth)
 
 	// User management
 	e.POST("/register", userHandler.Register)
-	e.POST("/login", userHandler.Login)
+	// Login handles both GET (form) and POST (submit)
+	e.Any("/login", userHandler.Login)
 
 	// Client management
 	e.POST("/client/register", clientHandler.Register)

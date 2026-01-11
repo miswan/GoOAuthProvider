@@ -14,6 +14,7 @@ type AuthCode struct {
 	CodeChallenge      string
 	CodeChallengeMethod string
 	Used               bool
+	RedirectURI        string
 }
 
 type RefreshToken struct {

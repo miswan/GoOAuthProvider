@@ -5,6 +5,7 @@ import (
 	"oauth2-provider/models"
 	"oauth2-provider/storage"
 	"oauth2-provider/utils"
+	"time"
 )
 
 type UserService struct {
@@ -45,4 +46,9 @@ func (s *UserService) Login(req *models.UserLogin) (*models.User, error) {
 	}
 
 	return user, nil
+}
+
+func (s *UserService) GenerateSessionToken(userID uint) (string, error) {
+	// Generate a JWT for the session, valid for 24 hours
+	return utils.GenerateJWT(userID, 24*time.Hour)
 }

@@ -26,6 +26,8 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	}
 
 	// Validate redirect URI
+	// Ensure the requested RedirectURI matches one of the registered URIs exactly.
+	// This prevents Open Redirect attacks.
 	validURI := false
 	for _, uri := range client.RedirectURIs {
 		if uri == req.RedirectURI {
@@ -34,7 +36,7 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 		}
 	}
 	if !validURI {
-		return errors.New("invalid redirect URI")
+		return errors.New("invalid redirect URI: does not match registered URIs")
 	}
 
 	// Validate PKCE parameters
@@ -45,12 +47,16 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 		return errors.New("code_challenge_method must be 'S256' or 'plain'")
 	}
 
+	if req.ResponseType != "code" {
+		return errors.New("unsupported response_type")
+	}
+
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, redirectURI, codeChallenge, codeChallengeMethod)
 	if err != nil {
 		return "", err
 	}
@@ -58,6 +64,29 @@ func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, c
 }
 
 func (s *OAuthService) ExchangeToken(req *models.TokenRequest) (string, string, error) {
+	// Authenticate client
+	client := s.store.GetClient(req.ClientID)
+	if client == nil {
+		return "", "", errors.New("invalid client_id")
+	}
+
+	// Verify client secret if provided or required
+	// Note: Public clients (PKCE) might not send a secret, but if they do, or if the client has one stored, we should check it?
+	// RFC 7636 says public clients don't use secrets.
+	// For this implementation, if the request contains a secret, we verify it.
+	// If the DB client has a secret and the request doesn't provide it, we might want to fail unless we know it's a public client.
+	// However, since we support PKCE, we allow the exchange if PKCE validation passes later.
+	// But strictly, if a client is confidential, it MUST authenticate.
+	// We'll assume if Client.Secret is not empty, it's a confidential client.
+	if client.Secret != "" && req.ClientSecret != "" {
+		if client.Secret != req.ClientSecret {
+			return "", "", errors.New("invalid client_secret")
+		}
+	} else if client.Secret != "" && req.ClientSecret == "" {
+		// Confidential client must provide secret
+		return "", "", errors.New("client_secret required")
+	}
+
 	if req.GrantType != "authorization_code" && req.GrantType != "refresh_token" {
 		return "", "", errors.New("unsupported grant type")
 	}
@@ -73,6 +102,16 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 	authCode := s.store.GetAuthCode(req.Code)
 	if authCode == nil {
 		return "", "", errors.New("invalid authorization code")
+	}
+
+	// Validate Client ID matches
+	if authCode.ClientID != req.ClientID {
+		return "", "", errors.New("client_id mismatch")
+	}
+
+	// Validate Redirect URI matches
+	if authCode.RedirectURI != req.RedirectURI {
+		return "", "", errors.New("redirect_uri mismatch")
 	}
 
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {

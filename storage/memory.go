@@ -12,6 +12,7 @@ type AuthCode struct {
 	ClientID           string
 	UserID             uint
 	ExpiresAt          time.Time
+	RedirectURI        string
 	CodeChallenge      string
 	CodeChallengeMethod string
 }
@@ -92,7 +93,7 @@ func (s *MemoryStorage) StoreRefreshToken(token string, userID uint, clientID st
 	return nil
 }
 
-func (s *MemoryStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, codeChallenge, codeChallengeMethod string) error {
+func (s *MemoryStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.authCodes[code] = &AuthCode{
@@ -100,6 +101,7 @@ func (s *MemoryStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint
 		ClientID:           clientID,
 		UserID:             userID,
 		ExpiresAt:          time.Now().Add(10 * time.Minute),
+		RedirectURI:        redirectURI,
 		CodeChallenge:      codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
 	}

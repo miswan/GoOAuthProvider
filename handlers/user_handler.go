@@ -42,6 +42,32 @@ func (h *UserHandler) Login(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
 	}
 
+	token, err := h.userService.GenerateSessionToken(user.ID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate session token")
+	}
+
+	// Set session cookie
+	c.SetCookie(&http.Cookie{
+		Name:     "session_token",
+		Value:    token,
+		HttpOnly: true,
+		Path:     "/",
+	})
+
+	// Check for "next" query parameter
+	next := c.QueryParam("next")
+	if next != "" {
+		// Just returning a JSON with redirect info for now, or we could redirect if this was a form post
+		// Since the request is likely JSON (Bind), we return JSON.
+		// If the client expects a redirect, they should handle the "redirect_to" field.
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"message":     "Login successful",
+			"user_id":     strconv.FormatUint(uint64(user.ID), 10),
+			"redirect_to": next,
+		})
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"message": "Login successful",
 		"user_id": strconv.FormatUint(uint64(user.ID), 10),

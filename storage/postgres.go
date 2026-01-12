@@ -29,6 +29,15 @@ func (s *PostgresStorage) GetUserByUsername(username string) *models.User {
 	return &user
 }
 
+func (s *PostgresStorage) GetUserByID(id uint) *models.User {
+	var user models.User
+	if err := s.db.First(&user, id).Error; err != nil {
+		log.Printf("Error getting user by id: %v", err)
+		return nil
+	}
+	return &user
+}
+
 func (s *PostgresStorage) StoreClient(client *models.Client) error {
 	// Log the client data before storing
 	log.Printf("Storing client with RedirectURIs: %v, GrantTypes: %v", client.RedirectURIs, client.GrantTypes)
@@ -65,23 +74,25 @@ func (s *PostgresStorage) GetClient(clientID string) *models.Client {
 	return &client
 }
 
-func (s *PostgresStorage) StoreAuthCode(code, clientID string, userID uint) error {
+func (s *PostgresStorage) StoreAuthCode(code, clientID, redirectURI string, userID uint) error {
 	authCode := &models.AuthCode{
-		Code:      code,
-		ClientID:  clientID,
-		UserID:    userID,
-		ExpiresAt: time.Now().Add(10 * time.Minute),
+		Code:        code,
+		ClientID:    clientID,
+		RedirectURI: redirectURI,
+		UserID:      userID,
+		ExpiresAt:   time.Now().Add(10 * time.Minute),
 	}
 	return s.db.Create(authCode).Error
 }
 
-func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, codeChallenge, codeChallengeMethod string) error {
+func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID, redirectURI string, userID uint, codeChallenge, codeChallengeMethod string) error {
 	authCode := &models.AuthCode{
 		Code:                code,
 		ClientID:            clientID,
-		UserID:             userID,
-		ExpiresAt:          time.Now().Add(10 * time.Minute),
-		CodeChallenge:      codeChallenge,
+		RedirectURI:         redirectURI,
+		UserID:              userID,
+		ExpiresAt:           time.Now().Add(10 * time.Minute),
+		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
 	}
 	return s.db.Create(authCode).Error
@@ -89,13 +100,22 @@ func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID ui
 
 func (s *PostgresStorage) GetAuthCode(code string) *models.AuthCode {
 	var authCode models.AuthCode
-	if err := s.db.Where("code = ? AND expires_at > ? AND used = ?", code, time.Now(), false).First(&authCode).Error; err != nil {
-		log.Printf("Error getting auth code: %v", err)
+	// Use a transaction to ensure atomicity
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("code = ? AND expires_at > ? AND used = ?", code, time.Now(), false).First(&authCode).Error; err != nil {
+			return err
+		}
+		// Mark the auth code as used
+		if err := tx.Model(&authCode).Update("used", true).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("Error getting/using auth code: %v", err)
 		return nil
 	}
-
-	// Mark the auth code as used
-	s.db.Model(&authCode).Update("used", true)
 
 	return &authCode
 }

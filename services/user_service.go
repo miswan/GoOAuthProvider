@@ -5,6 +5,7 @@ import (
 	"oauth2-provider/models"
 	"oauth2-provider/storage"
 	"oauth2-provider/utils"
+	"time"
 )
 
 type UserService struct {
@@ -44,5 +45,17 @@ func (s *UserService) Login(req *models.UserLogin) (*models.User, error) {
 		return nil, errors.New("invalid credentials")
 	}
 
+	return user, nil
+}
+
+func (s *UserService) GenerateSessionToken(user *models.User) (string, error) {
+	return utils.GenerateJWT(user.ID, 24*time.Hour)
+}
+
+func (s *UserService) GetUserByID(id uint) (*models.User, error) {
+	user := s.store.GetUserByID(id)
+	if user == nil {
+		return nil, errors.New("user not found")
+	}
 	return user, nil
 }

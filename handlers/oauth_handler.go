@@ -3,17 +3,23 @@ package handlers
 import (
 	"github.com/labstack/echo/v4"
 	"net/http"
+	"net/url"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
+	"oauth2-provider/utils"
 	"strconv"
 )
 
 type OAuthHandler struct {
 	oauthService *services.OAuthService
+	userService  *services.UserService
 }
 
-func NewOAuthHandler(oauthService *services.OAuthService) *OAuthHandler {
-	return &OAuthHandler{oauthService: oauthService}
+func NewOAuthHandler(oauthService *services.OAuthService, userService *services.UserService) *OAuthHandler {
+	return &OAuthHandler{
+		oauthService: oauthService,
+		userService:  userService,
+	}
 }
 
 func (h *OAuthHandler) Authorize(c echo.Context) error {
@@ -26,11 +32,28 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	// For simplicity, assuming user is already authenticated
-	// In real implementation, check session and show login/consent page
+	// Check for session cookie
+	cookie, err := c.Cookie("session_token")
+	if err != nil || cookie.Value == "" {
+		// Redirect to login
+		loginURL := "/login?next=" + url.QueryEscape(c.Request().RequestURI)
+		return c.Redirect(http.StatusFound, loginURL)
+	}
+
+	// Validate token
+	claims, err := utils.ValidateJWT(cookie.Value)
+	if err != nil {
+		loginURL := "/login?next=" + url.QueryEscape(c.Request().RequestURI)
+		return c.Redirect(http.StatusFound, loginURL)
+	}
+
+	userIDStr := claims.Subject
+	userID, _ := strconv.ParseUint(userIDStr, 10, 64)
+
 	code, err := h.oauthService.GenerateAuthorizationCode(
 		req.ClientID,
-		1, // Temporary userID for testing
+		req.RedirectURI,
+		uint(userID),
 		req.CodeChallenge,
 		req.CodeChallengeMethod,
 	)
@@ -38,10 +61,15 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{
+	redirectURL, err := utils.BuildRedirectURL(req.RedirectURI, map[string]string{
 		"code":  code,
 		"state": req.State,
 	})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	return c.Redirect(http.StatusFound, redirectURL)
 }
 
 func (h *OAuthHandler) Token(c echo.Context) error {
@@ -67,9 +95,14 @@ func (h *OAuthHandler) UserInfo(c echo.Context) error {
 	userIDStr := c.Get("user_id").(string)
 	userID, _ := strconv.ParseUint(userIDStr, 10, 64)
 
+	user, err := h.userService.GetUserByID(uint(userID))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "user not found")
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"sub":   userID,
-		"name":  "John Doe",
-		"email": "john@example.com",
+		"name":  user.Username,
+		"email": user.Email,
 	})
 }

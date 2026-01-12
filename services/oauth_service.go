@@ -48,9 +48,9 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID, redirectURI string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCodeWithPKCE(code, clientID, redirectURI, userID, codeChallenge, codeChallengeMethod)
 	if err != nil {
 		return "", err
 	}
@@ -70,9 +70,29 @@ func (s *OAuthService) ExchangeToken(req *models.TokenRequest) (string, string, 
 }
 
 func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (string, string, error) {
+	// Validate Client Credentials
+	client := s.store.GetClient(req.ClientID)
+	if client == nil {
+		return "", "", errors.New("invalid client")
+	}
+
+	// If client has a secret, we must validate it.
+	// In our model, all clients have secrets, so we enforce it.
+	if client.Secret != "" && client.Secret != req.ClientSecret {
+		return "", "", errors.New("invalid client secret")
+	}
+
 	authCode := s.store.GetAuthCode(req.Code)
 	if authCode == nil {
 		return "", "", errors.New("invalid authorization code")
+	}
+
+	if authCode.ClientID != req.ClientID {
+		return "", "", errors.New("client id mismatch")
+	}
+
+	if authCode.RedirectURI != req.RedirectURI {
+		return "", "", errors.New("redirect uri mismatch")
 	}
 
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {
@@ -102,6 +122,19 @@ func (s *OAuthService) handleRefreshTokenGrant(req *models.TokenRequest) (string
 	refreshToken := s.store.GetRefreshToken(req.RefreshToken)
 	if refreshToken == nil {
 		return "", "", errors.New("invalid refresh token")
+	}
+
+	// Validate Client Credentials for refresh token flow as well
+	client := s.store.GetClient(req.ClientID)
+	if client == nil {
+		return "", "", errors.New("invalid client")
+	}
+	if client.Secret != "" && client.Secret != req.ClientSecret {
+		return "", "", errors.New("invalid client secret")
+	}
+
+	if refreshToken.ClientID != req.ClientID {
+		return "", "", errors.New("client id mismatch")
 	}
 
 	// Delete the used refresh token
@@ -138,6 +171,10 @@ func (s *OAuthService) validatePKCE(authCode *models.AuthCode, codeVerifier stri
 	} else { // plain
 		computedChallenge = codeVerifier
 	}
+
+	// Remove padding if present in computedChallenge, although RawURLEncoding shouldn't have it.
+	// But just in case standard encoding was used elsewhere.
+	// Base64 RawURLEncoding is what we want.
 
 	if !strings.EqualFold(computedChallenge, authCode.CodeChallenge) {
 		return errors.New("invalid code verifier")

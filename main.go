@@ -53,11 +53,9 @@ func main() {
 		log.Fatalf("Database migration failed at User model: %v", err)
 	}
 
-	// Migrate Client model with extra logging
+	// Migrate Client model
 	log.Println("Attempting to migrate Client model...")
 	if err := migrateModel(db, &models.Client{}, "Client"); err != nil {
-		// Print the schema of the Client model for debugging
-		log.Printf("Client model schema: %+v", &models.Client{})
 		log.Fatalf("Database migration failed at Client model: %v", err)
 	}
 
@@ -84,12 +82,17 @@ func main() {
 	log.Println("Services initialized")
 
 	// Initialize handlers
-	oauthHandler := handlers.NewOAuthHandler(oauthService)
+	oauthHandler := handlers.NewOAuthHandler(oauthService, userService)
 	userHandler := handlers.NewUserHandler(userService)
 	clientHandler := handlers.NewClientHandler(clientService)
+	htmlHandler := handlers.NewHTMLHandler()
 	log.Println("Handlers initialized")
 
 	// Routes
+	// HTML endpoints
+	e.GET("/", htmlHandler.Index)
+	e.GET("/login", htmlHandler.Login)
+
 	// OAuth2 endpoints
 	e.GET("/authorize", oauthHandler.Authorize)
 	e.POST("/token", oauthHandler.Token)

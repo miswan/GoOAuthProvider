@@ -1,11 +1,12 @@
 package handlers
 
 import (
+	"fmt"
 	"github.com/labstack/echo/v4"
 	"net/http"
+	"net/url"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
-	"strconv"
 )
 
 type OAuthHandler struct {
@@ -26,11 +27,30 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	// For simplicity, assuming user is already authenticated
-	// In real implementation, check session and show login/consent page
+	// Check if user is authenticated via session/cookie
+	// Using standard JWT cookie "session_token" set by UserHandler
+	cookie, err := c.Cookie("session_token")
+	if err != nil || cookie.Value == "" {
+		// User is not authenticated, redirect to login page
+		// Construct the "next" URL to return to this authorization request
+		q := c.Request().URL.Query()
+		nextURL := fmt.Sprintf("/authorize?%s", q.Encode())
+		return c.Redirect(http.StatusFound, "/login?next="+url.QueryEscape(nextURL))
+	}
+
+	// Validate session token
+	claims, err := services.ValidateSessionToken(cookie.Value)
+	if err != nil {
+		return c.Redirect(http.StatusFound, "/login")
+	}
+
+	userID := claims.UserID
+
+	// Generate authorization code
 	code, err := h.oauthService.GenerateAuthorizationCode(
 		req.ClientID,
-		1, // Temporary userID for testing
+		req.RedirectURI,
+		userID,
 		req.CodeChallenge,
 		req.CodeChallengeMethod,
 	)
@@ -38,10 +58,20 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{
-		"code":  code,
-		"state": req.State,
-	})
+	// Redirect back to the client application with the code and state
+	redirectURL, err := url.Parse(req.RedirectURI)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid redirect URI")
+	}
+
+	q := redirectURL.Query()
+	q.Set("code", code)
+	if req.State != "" {
+		q.Set("state", req.State)
+	}
+	redirectURL.RawQuery = q.Encode()
+
+	return c.Redirect(http.StatusFound, redirectURL.String())
 }
 
 func (h *OAuthHandler) Token(c echo.Context) error {
@@ -64,12 +94,14 @@ func (h *OAuthHandler) Token(c echo.Context) error {
 }
 
 func (h *OAuthHandler) UserInfo(c echo.Context) error {
-	userIDStr := c.Get("user_id").(string)
-	userID, _ := strconv.ParseUint(userIDStr, 10, 64)
+	// user_id is set by middleware.JWTAuth
+	userID := c.Get("user_id").(uint)
 
+	// In a real app, fetch user details from DB
+	// For now, return basic info
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"sub":   userID,
-		"name":  "John Doe",
-		"email": "john@example.com",
+		"name":  fmt.Sprintf("User %d", userID),
+		"email": fmt.Sprintf("user%d@example.com", userID),
 	})
 }

@@ -87,6 +87,7 @@ func main() {
 	oauthHandler := handlers.NewOAuthHandler(oauthService)
 	userHandler := handlers.NewUserHandler(userService)
 	clientHandler := handlers.NewClientHandler(clientService)
+	htmlHandler := handlers.NewHTMLHandler()
 	log.Println("Handlers initialized")
 
 	// Routes
@@ -98,6 +99,7 @@ func main() {
 	// User management
 	e.POST("/register", userHandler.Register)
 	e.POST("/login", userHandler.Login)
+	e.GET("/login", htmlHandler.Login)
 
 	// Client management
 	e.POST("/client/register", clientHandler.Register)

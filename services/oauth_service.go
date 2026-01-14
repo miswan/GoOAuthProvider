@@ -124,7 +124,7 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 	}
 
 	// Generate tokens
-	accessToken, err := utils.GenerateJWT(authCode.UserID, time.Hour)
+	accessToken, err := utils.GeneratePaseto(authCode.UserID, time.Hour)
 	if err != nil {
 		return "", "", err
 	}
@@ -154,7 +154,7 @@ func (s *OAuthService) handleRefreshTokenGrant(req *models.TokenRequest) (string
 	}
 
 	// Generate new access token
-	accessToken, err := utils.GenerateJWT(refreshToken.UserID, time.Hour)
+	accessToken, err := utils.GeneratePaseto(refreshToken.UserID, time.Hour)
 	if err != nil {
 		return "", "", err
 	}

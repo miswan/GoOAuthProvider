@@ -45,8 +45,8 @@ func (h *UserHandler) Login(c echo.Context) error {
 	}
 
 	// Set session cookie
-	// Use JWT for session to ensure integrity
-	sessionToken, err := utils.GenerateJWT(user.ID, 24*time.Hour)
+	// Use Paseto for session to ensure integrity
+	sessionToken, err := utils.GeneratePaseto(user.ID, 24*time.Hour)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate session")
 	}

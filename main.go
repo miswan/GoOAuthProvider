@@ -93,7 +93,7 @@ func main() {
 	// OAuth2 endpoints
 	e.GET("/authorize", oauthHandler.Authorize)
 	e.POST("/token", oauthHandler.Token)
-	e.GET("/userinfo", oauthHandler.UserInfo, middleware.JWTAuth)
+	e.GET("/userinfo", oauthHandler.UserInfo, middleware.PasetoAuth)
 
 	// User management
 	e.POST("/register", userHandler.Register)
@@ -101,7 +101,7 @@ func main() {
 
 	// Client management
 	e.POST("/client/register", clientHandler.Register)
-	e.GET("/client/:id", clientHandler.Get, middleware.JWTAuth)
+	e.GET("/client/:id", clientHandler.Get, middleware.PasetoAuth)
 	log.Println("Routes configured")
 
 	// Start server

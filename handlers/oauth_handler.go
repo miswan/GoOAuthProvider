@@ -35,7 +35,7 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusUnauthorized, "User not authenticated")
 	}
 
-	claims, err := utils.ValidateJWT(cookie.Value)
+	claims, err := utils.ValidatePaseto(cookie.Value)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid user session")
 	}

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
+	"oauth2-provider/utils"
 	"strconv"
 )
 
@@ -40,6 +41,26 @@ func (h *UserHandler) Login(c echo.Context) error {
 	user, err := h.userService.Login(req)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
+	}
+
+	// Generate session token
+	token, err := services.GenerateSessionToken(user.ID) // Assuming this function will be available or using utils directly
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate session token")
+	}
+
+	// Set cookie
+	cookie := new(http.Cookie)
+	cookie.Name = "session_token"
+	cookie.Value = token
+	cookie.Path = "/"
+	cookie.HttpOnly = true
+	c.SetCookie(cookie)
+
+	// Check for next redirect
+	next := c.QueryParam("next")
+	if next != "" && utils.IsValidRedirect(next) {
+		return c.Redirect(http.StatusFound, next)
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{

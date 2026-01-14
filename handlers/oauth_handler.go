@@ -3,6 +3,7 @@ package handlers
 import (
 	"github.com/labstack/echo/v4"
 	"net/http"
+	"net/url"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
 	"strconv"
@@ -26,11 +27,27 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	// For simplicity, assuming user is already authenticated
-	// In real implementation, check session and show login/consent page
+	// Check for session token
+	cookie, err := c.Cookie("session_token")
+	if err != nil {
+		// Redirect to login with next param
+		loginURL := "/login?next=" + url.QueryEscape(c.Request().URL.String())
+		return c.Redirect(http.StatusFound, loginURL)
+	}
+
+	// Validate session (simple validation for now, relying on utils)
+	// In a real app, you might want to look up the user in the DB
+	claims, err := services.ValidateSessionToken(cookie.Value)
+	if err != nil {
+		return c.Redirect(http.StatusFound, "/login?next="+url.QueryEscape(c.Request().URL.String()))
+	}
+
+	userID, _ := strconv.ParseUint(claims.Subject, 10, 64)
+
 	code, err := h.oauthService.GenerateAuthorizationCode(
 		req.ClientID,
-		1, // Temporary userID for testing
+		uint(userID),
+		req.RedirectURI,
 		req.CodeChallenge,
 		req.CodeChallengeMethod,
 	)
@@ -38,10 +55,17 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{
-		"code":  code,
-		"state": req.State,
-	})
+	// Construct redirect URL safely
+	u, err := url.Parse(req.RedirectURI)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid redirect URI")
+	}
+	q := u.Query()
+	q.Set("code", code)
+	q.Set("state", req.State)
+	u.RawQuery = q.Encode()
+
+	return c.Redirect(http.StatusFound, u.String())
 }
 
 func (h *OAuthHandler) Token(c echo.Context) error {

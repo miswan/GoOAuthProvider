@@ -6,7 +6,7 @@ import (
     "strings"
 )
 
-func JWTAuth(next echo.HandlerFunc) echo.HandlerFunc {
+func PasetoAuth(next echo.HandlerFunc) echo.HandlerFunc {
     return func(c echo.Context) error {
         authHeader := c.Request().Header.Get("Authorization")
         if authHeader == "" {
@@ -19,7 +19,7 @@ func JWTAuth(next echo.HandlerFunc) echo.HandlerFunc {
         }
 
         token := parts[1]
-        claims, err := utils.ValidateJWT(token)
+        claims, err := utils.ValidatePaseto(token)
         if err != nil {
             return echo.ErrUnauthorized
         }

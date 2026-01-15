@@ -29,6 +29,15 @@ func (s *PostgresStorage) GetUserByUsername(username string) *models.User {
 	return &user
 }
 
+func (s *PostgresStorage) GetUser(id uint) *models.User {
+	var user models.User
+	if err := s.db.First(&user, id).Error; err != nil {
+		log.Printf("Error getting user by id: %v", err)
+		return nil
+	}
+	return &user
+}
+
 func (s *PostgresStorage) StoreClient(client *models.Client) error {
 	// Log the client data before storing
 	log.Printf("Storing client with RedirectURIs: %v, GrantTypes: %v", client.RedirectURIs, client.GrantTypes)

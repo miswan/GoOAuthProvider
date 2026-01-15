@@ -7,16 +7,23 @@ import (
 	"oauth2-provider/models"
 	"oauth2-provider/storage"
 	"oauth2-provider/utils"
-	"strings"
 	"time"
 )
 
 type OAuthService struct {
-	store *storage.PostgresStorage
+	store storage.Storage
 }
 
-func NewOAuthService(store *storage.PostgresStorage) *OAuthService {
+func NewOAuthService(store storage.Storage) *OAuthService {
 	return &OAuthService{store: store}
+}
+
+func (s *OAuthService) GetUser(id uint) (*models.User, error) {
+	user := s.store.GetUser(id)
+	if user == nil {
+		return nil, errors.New("user not found")
+	}
+	return user, nil
 }
 
 func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationRequest) error {
@@ -35,6 +42,10 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	}
 	if !validURI {
 		return errors.New("invalid redirect URI")
+	}
+
+	if req.ResponseType != "code" {
+	    return errors.New("unsupported response_type")
 	}
 
 	// Validate PKCE parameters
@@ -79,8 +90,8 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 		return "", "", err
 	}
 
-	// Generate tokens
-	accessToken, err := utils.GenerateJWT(authCode.UserID, time.Hour)
+	// Generate tokens using Paseto
+	accessToken, err := utils.GeneratePaseto(authCode.UserID, time.Hour)
 	if err != nil {
 		return "", "", err
 	}
@@ -110,7 +121,7 @@ func (s *OAuthService) handleRefreshTokenGrant(req *models.TokenRequest) (string
 	}
 
 	// Generate new access token
-	accessToken, err := utils.GenerateJWT(refreshToken.UserID, time.Hour)
+	accessToken, err := utils.GeneratePaseto(refreshToken.UserID, time.Hour)
 	if err != nil {
 		return "", "", err
 	}
@@ -139,7 +150,11 @@ func (s *OAuthService) validatePKCE(authCode *models.AuthCode, codeVerifier stri
 		computedChallenge = codeVerifier
 	}
 
-	if !strings.EqualFold(computedChallenge, authCode.CodeChallenge) {
+	// Use ConstantTimeCompare? No, strings don't support it easily.
+	// But EqualFold is case-insensitive. RFC 7636 says base64url-encoded strings.
+	// Case matters for Base64. So EqualFold is technically wrong for S256 if standard Base64, but RawURLEncoding is usually standard.
+	// Let's use exact string comparison for safety.
+	if computedChallenge != authCode.CodeChallenge {
 		return errors.New("invalid code verifier")
 	}
 

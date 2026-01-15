@@ -5,7 +5,10 @@ import (
 	"net/http"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
+	"oauth2-provider/utils"
 	"strconv"
+	"time"
+	"strings"
 )
 
 type UserHandler struct {
@@ -39,11 +42,37 @@ func (h *UserHandler) Login(c echo.Context) error {
 
 	user, err := h.userService.Login(req)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
+		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid credentials")
+	}
+
+	// Generate Paseto Token
+	token, err := utils.GeneratePaseto(user.ID, 24*time.Hour)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Could not generate token")
+	}
+
+	// Set Cookie
+	c.SetCookie(&http.Cookie{
+		Name:     "session_token",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		Expires:  time.Now().Add(24 * time.Hour),
+	})
+
+	// Handle Redirect (from 'next' param)
+	next := c.FormValue("next")
+	if next == "" {
+		next = c.QueryParam("next")
+	}
+
+	if next != "" && strings.HasPrefix(next, "/") && !strings.HasPrefix(next, "//") {
+		return c.Redirect(http.StatusSeeOther, next)
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"message": "Login successful",
 		"user_id": strconv.FormatUint(uint64(user.ID), 10),
+		"token":   token,
 	})
 }

@@ -2,10 +2,10 @@ package storage
 
 import (
 	"gorm.io/gorm"
+	"log"
 	"oauth2-provider/models"
 	"oauth2-provider/utils"
 	"time"
-	"log"
 )
 
 type PostgresStorage struct {
@@ -79,9 +79,9 @@ func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID ui
 	authCode := &models.AuthCode{
 		Code:                code,
 		ClientID:            clientID,
-		UserID:             userID,
-		ExpiresAt:          time.Now().Add(10 * time.Minute),
-		CodeChallenge:      codeChallenge,
+		UserID:              userID,
+		ExpiresAt:           time.Now().Add(10 * time.Minute),
+		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
 	}
 	return s.db.Create(authCode).Error

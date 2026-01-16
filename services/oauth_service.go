@@ -7,15 +7,14 @@ import (
 	"oauth2-provider/models"
 	"oauth2-provider/storage"
 	"oauth2-provider/utils"
-	"strings"
 	"time"
 )
 
 type OAuthService struct {
-	store *storage.PostgresStorage
+	store storage.Storage
 }
 
-func NewOAuthService(store *storage.PostgresStorage) *OAuthService {
+func NewOAuthService(store storage.Storage) *OAuthService {
 	return &OAuthService{store: store}
 }
 
@@ -26,6 +25,8 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	}
 
 	// Validate redirect URI
+	// RFC 6749 Section 3.1.2.2: The authorization server MUST validate that the
+	// redirect_uri provided matches a registered redirect URI.
 	validURI := false
 	for _, uri := range client.RedirectURIs {
 		if uri == req.RedirectURI {
@@ -48,9 +49,9 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, redirectURI, codeChallenge, codeChallengeMethod)
 	if err != nil {
 		return "", err
 	}
@@ -75,12 +76,23 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 		return "", "", errors.New("invalid authorization code")
 	}
 
+	// Validate Redirect URI matches the one used in Authorization Request
+	if authCode.RedirectURI != req.RedirectURI {
+		return "", "", errors.New("redirect_uri mismatch")
+	}
+
+	// Verify client credentials if provided (Confidential Clients)
+	// Or ensure the clientID matches the one in the auth code (Public Clients)
+	if req.ClientID != "" && authCode.ClientID != req.ClientID {
+		return "", "", errors.New("client_id mismatch")
+	}
+
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {
 		return "", "", err
 	}
 
-	// Generate tokens
-	accessToken, err := utils.GenerateJWT(authCode.UserID, time.Hour)
+	// Generate tokens using Paseto
+	accessToken, err := utils.GeneratePaseto(authCode.UserID, time.Hour)
 	if err != nil {
 		return "", "", err
 	}
@@ -104,13 +116,13 @@ func (s *OAuthService) handleRefreshTokenGrant(req *models.TokenRequest) (string
 		return "", "", errors.New("invalid refresh token")
 	}
 
-	// Delete the used refresh token
+	// Delete the used refresh token (Rotation)
 	if err := s.store.DeleteRefreshToken(req.RefreshToken); err != nil {
 		return "", "", err
 	}
 
 	// Generate new access token
-	accessToken, err := utils.GenerateJWT(refreshToken.UserID, time.Hour)
+	accessToken, err := utils.GeneratePaseto(refreshToken.UserID, time.Hour)
 	if err != nil {
 		return "", "", err
 	}
@@ -127,7 +139,14 @@ func (s *OAuthService) handleRefreshTokenGrant(req *models.TokenRequest) (string
 
 func (s *OAuthService) validatePKCE(authCode *models.AuthCode, codeVerifier string) error {
 	if authCode.CodeChallenge == "" {
+		// If code challenge was not stored, PKCE was not used.
+		// If the client is public, this is bad, but for legacy it might pass.
+		// However, we enforce PKCE in ValidateAuthorizationRequest, so this shouldn't happen.
 		return errors.New("code challenge not found")
+	}
+
+	if codeVerifier == "" {
+		return errors.New("code_verifier is required")
 	}
 
 	var computedChallenge string
@@ -139,7 +158,7 @@ func (s *OAuthService) validatePKCE(authCode *models.AuthCode, codeVerifier stri
 		computedChallenge = codeVerifier
 	}
 
-	if !strings.EqualFold(computedChallenge, authCode.CodeChallenge) {
+	if computedChallenge != authCode.CodeChallenge {
 		return errors.New("invalid code verifier")
 	}
 

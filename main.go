@@ -84,16 +84,20 @@ func main() {
 	log.Println("Services initialized")
 
 	// Initialize handlers
-	oauthHandler := handlers.NewOAuthHandler(oauthService)
+	oauthHandler := handlers.NewOAuthHandler(oauthService, store)
 	userHandler := handlers.NewUserHandler(userService)
 	clientHandler := handlers.NewClientHandler(clientService)
+	htmlHandler := handlers.NewHTMLHandler()
 	log.Println("Handlers initialized")
 
 	// Routes
+	e.GET("/", htmlHandler.Index)
+	e.GET("/login", htmlHandler.Login)
+
 	// OAuth2 endpoints
 	e.GET("/authorize", oauthHandler.Authorize)
 	e.POST("/token", oauthHandler.Token)
-	e.GET("/userinfo", oauthHandler.UserInfo, middleware.JWTAuth)
+	e.GET("/userinfo", oauthHandler.UserInfo, middleware.PasetoAuth)
 
 	// User management
 	e.POST("/register", userHandler.Register)
@@ -101,7 +105,7 @@ func main() {
 
 	// Client management
 	e.POST("/client/register", clientHandler.Register)
-	e.GET("/client/:id", clientHandler.Get, middleware.JWTAuth)
+	e.GET("/client/:id", clientHandler.Get, middleware.PasetoAuth)
 	log.Println("Routes configured")
 
 	// Start server

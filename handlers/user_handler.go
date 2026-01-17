@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
+	"oauth2-provider/utils"
 	"strconv"
+	"time"
 )
 
 type UserHandler struct {
@@ -26,6 +28,12 @@ func (h *UserHandler) Register(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
+	// If Form Post, redirect to login
+	contentType := c.Request().Header.Get("Content-Type")
+	if contentType == "application/x-www-form-urlencoded" {
+		return c.Redirect(http.StatusFound, "/login")
+	}
+
 	return c.JSON(http.StatusCreated, map[string]string{
 		"message": "User registered successfully",
 	})
@@ -42,8 +50,39 @@ func (h *UserHandler) Login(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"message": "Login successful",
-		"user_id": strconv.FormatUint(uint64(user.ID), 10),
+	token, err := utils.GeneratePaseto(user.ID, 24*time.Hour)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate token")
+	}
+
+	c.SetCookie(&http.Cookie{
+		Name:     "session_token",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		Expires:  time.Now().Add(24 * time.Hour),
 	})
+
+	// Handle Redirect
+	next := c.FormValue("next")
+	if next == "" {
+		next = c.QueryParam("next")
+	}
+
+	contentType := c.Request().Header.Get("Content-Type")
+	// If JSON, return JSON
+	if contentType == "application/json" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"message": "Login successful",
+			"user_id": strconv.FormatUint(uint64(user.ID), 10),
+			"token":   token,
+		})
+	}
+
+	// Default to Redirect for Browser/Form
+	if next != "" && utils.IsValidRedirect(next) {
+		return c.Redirect(http.StatusFound, next)
+	}
+
+	return c.Redirect(http.StatusFound, "/")
 }

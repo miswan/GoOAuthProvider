@@ -74,6 +74,7 @@ func main() {
 	log.Println("Database migration completed successfully")
 
 	// Initialize storage with database
+	// PostgreStorage implements storage.Storage interface
 	store := storage.NewPostgresStorage(db)
 	log.Println("PostgreSQL storage initialized")
 
@@ -87,21 +88,28 @@ func main() {
 	oauthHandler := handlers.NewOAuthHandler(oauthService)
 	userHandler := handlers.NewUserHandler(userService)
 	clientHandler := handlers.NewClientHandler(clientService)
+	htmlHandler := handlers.NewHTMLHandler()
 	log.Println("Handlers initialized")
 
 	// Routes
+
+	// Web UI
+	e.GET("/", htmlHandler.Index)
+	e.GET("/login", htmlHandler.Login)
+	e.GET("/register", htmlHandler.Register)
+
 	// OAuth2 endpoints
 	e.GET("/authorize", oauthHandler.Authorize)
 	e.POST("/token", oauthHandler.Token)
-	e.GET("/userinfo", oauthHandler.UserInfo, middleware.JWTAuth)
+	e.GET("/userinfo", oauthHandler.UserInfo, middleware.PasetoAuth)
 
-	// User management
+	// User management (API)
 	e.POST("/register", userHandler.Register)
 	e.POST("/login", userHandler.Login)
 
 	// Client management
 	e.POST("/client/register", clientHandler.Register)
-	e.GET("/client/:id", clientHandler.Get, middleware.JWTAuth)
+	e.GET("/client/:id", clientHandler.Get, middleware.PasetoAuth)
 	log.Println("Routes configured")
 
 	// Start server

@@ -12,14 +12,18 @@ import (
 )
 
 type OAuthService struct {
-	store *storage.PostgresStorage
+	store storage.Storage
 }
 
-func NewOAuthService(store *storage.PostgresStorage) *OAuthService {
+func NewOAuthService(store storage.Storage) *OAuthService {
 	return &OAuthService{store: store}
 }
 
 func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationRequest) error {
+	if req.ResponseType != "code" {
+		return errors.New("unsupported response_type")
+	}
+
 	client := s.store.GetClient(req.ClientID)
 	if client == nil {
 		return errors.New("invalid client")
@@ -48,9 +52,9 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, redirectURI, codeChallenge, codeChallengeMethod)
 	if err != nil {
 		return "", err
 	}
@@ -60,6 +64,14 @@ func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, c
 func (s *OAuthService) ExchangeToken(req *models.TokenRequest) (string, string, error) {
 	if req.GrantType != "authorization_code" && req.GrantType != "refresh_token" {
 		return "", "", errors.New("unsupported grant type")
+	}
+
+	// Validate Client Credentials if present
+	if req.ClientSecret != "" {
+		client := s.store.GetClient(req.ClientID)
+		if client == nil || client.Secret != req.ClientSecret {
+			return "", "", errors.New("invalid client credentials")
+		}
 	}
 
 	if req.GrantType == "authorization_code" {
@@ -75,12 +87,20 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 		return "", "", errors.New("invalid authorization code")
 	}
 
+	if authCode.ClientID != req.ClientID {
+		return "", "", errors.New("invalid client_id for this code")
+	}
+
+	if authCode.RedirectURI != req.RedirectURI {
+		return "", "", errors.New("redirect_uri mismatch")
+	}
+
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {
 		return "", "", err
 	}
 
 	// Generate tokens
-	accessToken, err := utils.GenerateJWT(authCode.UserID, time.Hour)
+	accessToken, err := utils.GeneratePaseto(authCode.UserID, time.Hour)
 	if err != nil {
 		return "", "", err
 	}
@@ -104,13 +124,17 @@ func (s *OAuthService) handleRefreshTokenGrant(req *models.TokenRequest) (string
 		return "", "", errors.New("invalid refresh token")
 	}
 
+	if refreshToken.ClientID != req.ClientID {
+		return "", "", errors.New("invalid client_id")
+	}
+
 	// Delete the used refresh token
 	if err := s.store.DeleteRefreshToken(req.RefreshToken); err != nil {
 		return "", "", err
 	}
 
 	// Generate new access token
-	accessToken, err := utils.GenerateJWT(refreshToken.UserID, time.Hour)
+	accessToken, err := utils.GeneratePaseto(refreshToken.UserID, time.Hour)
 	if err != nil {
 		return "", "", err
 	}

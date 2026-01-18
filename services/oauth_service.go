@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"oauth2-provider/config"
 	"oauth2-provider/models"
 	"oauth2-provider/storage"
 	"oauth2-provider/utils"
@@ -12,10 +13,10 @@ import (
 )
 
 type OAuthService struct {
-	store *storage.PostgresStorage
+	store storage.Storage
 }
 
-func NewOAuthService(store *storage.PostgresStorage) *OAuthService {
+func NewOAuthService(store storage.Storage) *OAuthService {
 	return &OAuthService{store: store}
 }
 
@@ -48,9 +49,9 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, redirectURI, codeChallenge, codeChallengeMethod)
 	if err != nil {
 		return "", err
 	}
@@ -75,12 +76,31 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 		return "", "", errors.New("invalid authorization code")
 	}
 
+	// Validate redirect URI matches the one used in authorization
+	if authCode.RedirectURI != req.RedirectURI {
+		return "", "", errors.New("redirect_uri mismatch")
+	}
+
+	// Validate Client ID
+	if authCode.ClientID != req.ClientID {
+		return "", "", errors.New("client_id mismatch")
+	}
+
+	// Confidential client check (if client_secret is provided)
+	client := s.store.GetClient(req.ClientID)
+	if client == nil {
+		return "", "", errors.New("invalid client")
+	}
+	if req.ClientSecret != "" && req.ClientSecret != client.Secret {
+		return "", "", errors.New("invalid client secret")
+	}
+
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {
 		return "", "", err
 	}
 
-	// Generate tokens
-	accessToken, err := utils.GenerateJWT(authCode.UserID, time.Hour)
+	// Generate tokens using Paseto
+	accessToken, err := utils.GeneratePaseto(authCode.UserID, time.Duration(config.AccessTokenExpiry)*time.Second)
 	if err != nil {
 		return "", "", err
 	}
@@ -104,13 +124,18 @@ func (s *OAuthService) handleRefreshTokenGrant(req *models.TokenRequest) (string
 		return "", "", errors.New("invalid refresh token")
 	}
 
-	// Delete the used refresh token
+	// Validate client if needed (optional but good practice)
+	if req.ClientID != "" && refreshToken.ClientID != req.ClientID {
+		return "", "", errors.New("client_id mismatch")
+	}
+
+	// Delete the used refresh token (Rotation)
 	if err := s.store.DeleteRefreshToken(req.RefreshToken); err != nil {
 		return "", "", err
 	}
 
 	// Generate new access token
-	accessToken, err := utils.GenerateJWT(refreshToken.UserID, time.Hour)
+	accessToken, err := utils.GeneratePaseto(refreshToken.UserID, time.Duration(config.AccessTokenExpiry)*time.Second)
 	if err != nil {
 		return "", "", err
 	}
@@ -135,6 +160,8 @@ func (s *OAuthService) validatePKCE(authCode *models.AuthCode, codeVerifier stri
 		h := sha256.New()
 		h.Write([]byte(codeVerifier))
 		computedChallenge = base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+		// Remove padding if any, although RawURLEncoding usually handles it.
+		computedChallenge = strings.TrimRight(computedChallenge, "=")
 	} else { // plain
 		computedChallenge = codeVerifier
 	}

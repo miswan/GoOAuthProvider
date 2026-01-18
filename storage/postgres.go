@@ -6,6 +6,7 @@ import (
 	"oauth2-provider/utils"
 	"time"
 	"log"
+	"github.com/google/uuid"
 )
 
 type PostgresStorage struct {
@@ -33,9 +34,13 @@ func (s *PostgresStorage) StoreClient(client *models.Client) error {
 	// Log the client data before storing
 	log.Printf("Storing client with RedirectURIs: %v, GrantTypes: %v", client.RedirectURIs, client.GrantTypes)
 
-	// Generate client credentials
-	client.ClientID = utils.GenerateRandomString(24)
-	client.Secret = utils.GenerateRandomString(32)
+	// Generate client credentials if not provided
+	if client.ClientID == "" {
+		client.ClientID = uuid.New().String()
+	}
+	if client.Secret == "" {
+		client.Secret = utils.GenerateRandomString(32)
+	}
 
 	// Ensure arrays are initialized
 	if len(client.RedirectURIs) == 0 {
@@ -65,21 +70,23 @@ func (s *PostgresStorage) GetClient(clientID string) *models.Client {
 	return &client
 }
 
-func (s *PostgresStorage) StoreAuthCode(code, clientID string, userID uint) error {
+func (s *PostgresStorage) StoreAuthCode(code, clientID string, userID uint, redirectURI string) error {
 	authCode := &models.AuthCode{
-		Code:      code,
-		ClientID:  clientID,
-		UserID:    userID,
-		ExpiresAt: time.Now().Add(10 * time.Minute),
+		Code:        code,
+		ClientID:    clientID,
+		UserID:      userID,
+		RedirectURI: redirectURI,
+		ExpiresAt:   time.Now().Add(10 * time.Minute),
 	}
 	return s.db.Create(authCode).Error
 }
 
-func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, codeChallenge, codeChallengeMethod string) error {
+func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) error {
 	authCode := &models.AuthCode{
 		Code:                code,
 		ClientID:            clientID,
 		UserID:             userID,
+		RedirectURI:        redirectURI,
 		ExpiresAt:          time.Now().Add(10 * time.Minute),
 		CodeChallenge:      codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
@@ -94,9 +101,13 @@ func (s *PostgresStorage) GetAuthCode(code string) *models.AuthCode {
 		return nil
 	}
 
-	// Mark the auth code as used
-	s.db.Model(&authCode).Update("used", true)
+	// Atomic update
+	result := s.db.Model(&models.AuthCode{}).Where("id = ? AND used = ?", authCode.ID, false).Update("used", true)
+	if result.Error != nil || result.RowsAffected == 0 {
+		return nil
+	}
 
+	authCode.Used = true
 	return &authCode
 }
 

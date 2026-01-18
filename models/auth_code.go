@@ -10,6 +10,7 @@ type AuthCode struct {
 	Code               string
 	ClientID           string
 	UserID             uint
+	RedirectURI        string // Added to ensure matching redirect URI
 	ExpiresAt          time.Time
 	CodeChallenge      string
 	CodeChallengeMethod string

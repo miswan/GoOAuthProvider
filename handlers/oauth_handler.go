@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"fmt"
 	"github.com/labstack/echo/v4"
 	"net/http"
+	"net/url"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
+	"oauth2-provider/utils"
 	"strconv"
 )
 
@@ -17,6 +20,22 @@ func NewOAuthHandler(oauthService *services.OAuthService) *OAuthHandler {
 }
 
 func (h *OAuthHandler) Authorize(c echo.Context) error {
+	// Check for session cookie
+	cookie, err := c.Cookie("session_token")
+	if err != nil {
+		// Not authenticated, redirect to login with next param
+		nextURL := c.Request().URL.String()
+		return c.Redirect(http.StatusSeeOther, fmt.Sprintf("/login?next=%s", url.QueryEscape(nextURL)))
+	}
+
+	// Validate session token
+	claims, err := utils.ValidatePaseto(cookie.Value)
+	if err != nil {
+		return c.Redirect(http.StatusSeeOther, fmt.Sprintf("/login?next=%s", url.QueryEscape(c.Request().URL.String())))
+	}
+
+	userID, _ := strconv.ParseUint(claims.Subject, 10, 64)
+
 	req := new(models.AuthorizationRequest)
 	if err := c.Bind(req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
@@ -26,11 +45,10 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	// For simplicity, assuming user is already authenticated
-	// In real implementation, check session and show login/consent page
 	code, err := h.oauthService.GenerateAuthorizationCode(
 		req.ClientID,
-		1, // Temporary userID for testing
+		uint(userID),
+		req.RedirectURI, // Store the redirect URI used
 		req.CodeChallenge,
 		req.CodeChallengeMethod,
 	)
@@ -38,14 +56,25 @@ func (h *OAuthHandler) Authorize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{
-		"code":  code,
-		"state": req.State,
-	})
+	// Redirect back to the application with code and state
+	redirectURL, err := url.Parse(req.RedirectURI)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid redirect URI")
+	}
+
+	query := redirectURL.Query()
+	query.Set("code", code)
+	if req.State != "" {
+		query.Set("state", req.State)
+	}
+	redirectURL.RawQuery = query.Encode()
+
+	return c.Redirect(http.StatusFound, redirectURL.String())
 }
 
 func (h *OAuthHandler) Token(c echo.Context) error {
 	req := new(models.TokenRequest)
+	// Bind supports JSON, XML, Form values
 	if err := c.Bind(req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
@@ -69,7 +98,7 @@ func (h *OAuthHandler) UserInfo(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"sub":   userID,
-		"name":  "John Doe",
+		"name":  "John Doe", // In a real app, fetch from userService
 		"email": "john@example.com",
 	})
 }

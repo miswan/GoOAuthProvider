@@ -12,10 +12,10 @@ import (
 )
 
 type OAuthService struct {
-	store *storage.PostgresStorage
+	store storage.Storage
 }
 
-func NewOAuthService(store *storage.PostgresStorage) *OAuthService {
+func NewOAuthService(store storage.Storage) *OAuthService {
 	return &OAuthService{store: store}
 }
 
@@ -48,9 +48,9 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, redirectURI, codeChallenge, codeChallengeMethod)
 	if err != nil {
 		return "", err
 	}
@@ -75,12 +75,37 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 		return "", "", errors.New("invalid authorization code")
 	}
 
+	// Validate ClientID matches stored code
+	if authCode.ClientID != req.ClientID {
+		return "", "", errors.New("client id mismatch")
+	}
+
+	// Validate RedirectURI matches stored code
+	if authCode.RedirectURI != req.RedirectURI {
+		return "", "", errors.New("redirect uri mismatch")
+	}
+
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {
 		return "", "", err
 	}
 
-	// Generate tokens
-	accessToken, err := utils.GenerateJWT(authCode.UserID, time.Hour)
+	// Validate Client Secret if confidential client (assuming check logic here or in handler?)
+	// OAuth2 RFC says for confidential clients we must authenticate them.
+	// We'll check secret if provided or if client is confidential.
+	client := s.store.GetClient(req.ClientID)
+	if client == nil {
+		return "", "", errors.New("invalid client")
+	}
+
+	// Simple check: if client has secret, req must have it and it must match
+	if client.Secret != "" {
+		if req.ClientSecret != client.Secret {
+			return "", "", errors.New("invalid client secret")
+		}
+	}
+
+	// Generate tokens using Paseto
+	accessToken, err := utils.GeneratePaseto(authCode.UserID, time.Hour)
 	if err != nil {
 		return "", "", err
 	}
@@ -110,7 +135,7 @@ func (s *OAuthService) handleRefreshTokenGrant(req *models.TokenRequest) (string
 	}
 
 	// Generate new access token
-	accessToken, err := utils.GenerateJWT(refreshToken.UserID, time.Hour)
+	accessToken, err := utils.GeneratePaseto(refreshToken.UserID, time.Hour)
 	if err != nil {
 		return "", "", err
 	}

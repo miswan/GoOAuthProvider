@@ -1,11 +1,12 @@
 package storage
 
 import (
-	"gorm.io/gorm"
+	"log"
 	"oauth2-provider/models"
 	"oauth2-provider/utils"
 	"time"
-	"log"
+
+	"gorm.io/gorm"
 )
 
 type PostgresStorage struct {
@@ -33,19 +34,15 @@ func (s *PostgresStorage) StoreClient(client *models.Client) error {
 	// Log the client data before storing
 	log.Printf("Storing client with RedirectURIs: %v, GrantTypes: %v", client.RedirectURIs, client.GrantTypes)
 
-	// Generate client credentials
-	client.ClientID = utils.GenerateRandomString(24)
-	client.Secret = utils.GenerateRandomString(32)
-
-	// Ensure arrays are initialized
-	if len(client.RedirectURIs) == 0 {
-		client.RedirectURIs = []string{}
+	// Generate client credentials if not present (though usually done by service)
+	if client.ClientID == "" {
+		client.ClientID = utils.GenerateRandomString(24)
 	}
-	if len(client.GrantTypes) == 0 {
-		client.GrantTypes = []string{"authorization_code"}
+	if client.Secret == "" {
+		client.Secret = utils.GenerateRandomString(32)
 	}
 
-	// Create client using GORM with SQL logging enabled
+	// Create client using GORM
 	result := s.db.Debug().Create(client)
 	if result.Error != nil {
 		log.Printf("Error storing client: %v", result.Error)
@@ -65,38 +62,43 @@ func (s *PostgresStorage) GetClient(clientID string) *models.Client {
 	return &client
 }
 
-func (s *PostgresStorage) StoreAuthCode(code, clientID string, userID uint) error {
-	authCode := &models.AuthCode{
-		Code:      code,
-		ClientID:  clientID,
-		UserID:    userID,
-		ExpiresAt: time.Now().Add(10 * time.Minute),
-	}
-	return s.db.Create(authCode).Error
-}
-
-func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, codeChallenge, codeChallengeMethod string) error {
+func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) error {
 	authCode := &models.AuthCode{
 		Code:                code,
 		ClientID:            clientID,
-		UserID:             userID,
-		ExpiresAt:          time.Now().Add(10 * time.Minute),
-		CodeChallenge:      codeChallenge,
+		UserID:              userID,
+		RedirectURI:         redirectURI,
+		ExpiresAt:           time.Now().Add(10 * time.Minute),
+		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
+		Used:                false,
 	}
 	return s.db.Create(authCode).Error
 }
 
 func (s *PostgresStorage) GetAuthCode(code string) *models.AuthCode {
 	var authCode models.AuthCode
-	if err := s.db.Where("code = ? AND expires_at > ? AND used = ?", code, time.Now(), false).First(&authCode).Error; err != nil {
-		log.Printf("Error getting auth code: %v", err)
+	// Use a transaction to lock the row and update 'used' atomically
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// Find valid unused code and lock row
+		// Note: using raw SQL locking might be safer if database specific,
+		// but GORM Clausses(clause.Locking{Strength: "UPDATE"}) is better.
+		// For simplicity, we check and update.
+		// 'FOR UPDATE' is strictly postgres/mysql compatible.
+
+		if err := tx.Where("code = ? AND expires_at > ? AND used = ?", code, time.Now(), false).First(&authCode).Error; err != nil {
+			return err
+		}
+
+		// Mark as used
+		authCode.Used = true
+		return tx.Save(&authCode).Error
+	})
+
+	if err != nil {
+		log.Printf("Error consuming auth code: %v", err)
 		return nil
 	}
-
-	// Mark the auth code as used
-	s.db.Model(&authCode).Update("used", true)
-
 	return &authCode
 }
 

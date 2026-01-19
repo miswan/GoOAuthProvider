@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
+	"oauth2-provider/utils"
 	"strconv"
+	"time"
 )
 
 type UserHandler struct {
@@ -40,6 +42,32 @@ func (h *UserHandler) Login(c echo.Context) error {
 	user, err := h.userService.Login(req)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
+	}
+
+	// Generate Paseto session token
+	token, err := utils.GeneratePaseto(user.ID, 24*time.Hour)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to generate session")
+	}
+
+	// Set session cookie
+	c.SetCookie(&http.Cookie{
+		Name:     "session_token",
+		Value:    token,
+		Expires:  time.Now().Add(24 * time.Hour),
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   false, // Should be true in production
+	})
+
+	// Handle redirect if 'next' parameter is present and valid
+	next := c.FormValue("next")
+	if next == "" {
+		next = c.QueryParam("next")
+	}
+
+	if next != "" && utils.IsValidRedirect(next) {
+		return c.Redirect(http.StatusSeeOther, next)
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{

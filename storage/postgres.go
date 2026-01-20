@@ -2,10 +2,9 @@ package storage
 
 import (
 	"gorm.io/gorm"
-	"oauth2-provider/models"
-	"oauth2-provider/utils"
-	"time"
 	"log"
+	"oauth2-provider/models"
+	"time"
 )
 
 type PostgresStorage struct {
@@ -32,10 +31,6 @@ func (s *PostgresStorage) GetUserByUsername(username string) *models.User {
 func (s *PostgresStorage) StoreClient(client *models.Client) error {
 	// Log the client data before storing
 	log.Printf("Storing client with RedirectURIs: %v, GrantTypes: %v", client.RedirectURIs, client.GrantTypes)
-
-	// Generate client credentials
-	client.ClientID = utils.GenerateRandomString(24)
-	client.Secret = utils.GenerateRandomString(32)
 
 	// Ensure arrays are initialized
 	if len(client.RedirectURIs) == 0 {
@@ -65,23 +60,14 @@ func (s *PostgresStorage) GetClient(clientID string) *models.Client {
 	return &client
 }
 
-func (s *PostgresStorage) StoreAuthCode(code, clientID string, userID uint) error {
-	authCode := &models.AuthCode{
-		Code:      code,
-		ClientID:  clientID,
-		UserID:    userID,
-		ExpiresAt: time.Now().Add(10 * time.Minute),
-	}
-	return s.db.Create(authCode).Error
-}
-
-func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, codeChallenge, codeChallengeMethod string) error {
+func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) error {
 	authCode := &models.AuthCode{
 		Code:                code,
 		ClientID:            clientID,
-		UserID:             userID,
-		ExpiresAt:          time.Now().Add(10 * time.Minute),
-		CodeChallenge:      codeChallenge,
+		UserID:              userID,
+		RedirectURI:         redirectURI,
+		ExpiresAt:           time.Now().Add(10 * time.Minute),
+		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
 	}
 	return s.db.Create(authCode).Error
@@ -89,6 +75,9 @@ func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID ui
 
 func (s *PostgresStorage) GetAuthCode(code string) *models.AuthCode {
 	var authCode models.AuthCode
+	// Atomic update: find and mark used in one go if possible, but GORM separate is generic enough
+	// Ideally use a transaction or raw SQL for "UPDATE ... WHERE used=false RETURNING *"
+	// keeping it simple but with "used=false" check
 	if err := s.db.Where("code = ? AND expires_at > ? AND used = ?", code, time.Now(), false).First(&authCode).Error; err != nil {
 		log.Printf("Error getting auth code: %v", err)
 		return nil

@@ -7,15 +7,14 @@ import (
 	"oauth2-provider/models"
 	"oauth2-provider/storage"
 	"oauth2-provider/utils"
-	"strings"
 	"time"
 )
 
 type OAuthService struct {
-	store *storage.PostgresStorage
+	store storage.Storage
 }
 
-func NewOAuthService(store *storage.PostgresStorage) *OAuthService {
+func NewOAuthService(store storage.Storage) *OAuthService {
 	return &OAuthService{store: store}
 }
 
@@ -48,9 +47,9 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, redirectURI, codeChallenge, codeChallengeMethod)
 	if err != nil {
 		return "", err
 	}
@@ -58,6 +57,20 @@ func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, c
 }
 
 func (s *OAuthService) ExchangeToken(req *models.TokenRequest) (string, string, error) {
+	// Validate client credentials for confidential clients (web apps)
+	// Public clients (SPA, Mobile) might not have secret, but here we enforce if sent
+	// Or stricter: always enforce if client was registered with secret (which they all are in this system)
+	client := s.store.GetClient(req.ClientID)
+	if client == nil {
+		return "", "", errors.New("invalid client_id")
+	}
+
+	// Basic check: if secret is provided or client has secret, they must match
+	// In this simple implementation, we assume all clients are confidential or provide secret
+	if client.Secret != req.ClientSecret {
+		return "", "", errors.New("invalid client_secret")
+	}
+
 	if req.GrantType != "authorization_code" && req.GrantType != "refresh_token" {
 		return "", "", errors.New("unsupported grant type")
 	}
@@ -72,7 +85,17 @@ func (s *OAuthService) ExchangeToken(req *models.TokenRequest) (string, string, 
 func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (string, string, error) {
 	authCode := s.store.GetAuthCode(req.Code)
 	if authCode == nil {
-		return "", "", errors.New("invalid authorization code")
+		return "", "", errors.New("invalid or expired authorization code")
+	}
+
+	// Verify Client ID matches
+	if authCode.ClientID != req.ClientID {
+		return "", "", errors.New("client_id mismatch")
+	}
+
+	// Verify Redirect URI matches the one used in authorization
+	if authCode.RedirectURI != req.RedirectURI {
+		return "", "", errors.New("redirect_uri mismatch")
 	}
 
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {
@@ -80,7 +103,7 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 	}
 
 	// Generate tokens
-	accessToken, err := utils.GenerateJWT(authCode.UserID, time.Hour)
+	accessToken, err := utils.GeneratePaseto(authCode.UserID, time.Hour)
 	if err != nil {
 		return "", "", err
 	}
@@ -101,16 +124,21 @@ func (s *OAuthService) handleRefreshTokenGrant(req *models.TokenRequest) (string
 
 	refreshToken := s.store.GetRefreshToken(req.RefreshToken)
 	if refreshToken == nil {
-		return "", "", errors.New("invalid refresh token")
+		return "", "", errors.New("invalid or expired refresh token")
 	}
 
-	// Delete the used refresh token
+	// Validate Client
+	if refreshToken.ClientID != req.ClientID {
+		return "", "", errors.New("client_id mismatch")
+	}
+
+	// Delete the used refresh token (Rotation)
 	if err := s.store.DeleteRefreshToken(req.RefreshToken); err != nil {
 		return "", "", err
 	}
 
 	// Generate new access token
-	accessToken, err := utils.GenerateJWT(refreshToken.UserID, time.Hour)
+	accessToken, err := utils.GeneratePaseto(refreshToken.UserID, time.Hour)
 	if err != nil {
 		return "", "", err
 	}
@@ -127,7 +155,10 @@ func (s *OAuthService) handleRefreshTokenGrant(req *models.TokenRequest) (string
 
 func (s *OAuthService) validatePKCE(authCode *models.AuthCode, codeVerifier string) error {
 	if authCode.CodeChallenge == "" {
-		return errors.New("code challenge not found")
+		// If no challenge was stored, but verifier is sent, or vice versa?
+		// RFC 7636 says if code_challenge was present in auth request, verifier is required.
+		// If we enforce PKCE at auth endpoint, it should be here.
+		return errors.New("code challenge not found in auth code record")
 	}
 
 	var computedChallenge string
@@ -139,7 +170,7 @@ func (s *OAuthService) validatePKCE(authCode *models.AuthCode, codeVerifier stri
 		computedChallenge = codeVerifier
 	}
 
-	if !strings.EqualFold(computedChallenge, authCode.CodeChallenge) {
+	if computedChallenge != authCode.CodeChallenge {
 		return errors.New("invalid code verifier")
 	}
 

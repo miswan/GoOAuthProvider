@@ -4,14 +4,15 @@ import (
 	"github.com/lib/pq"
 	"oauth2-provider/models"
 	"oauth2-provider/storage"
+	"oauth2-provider/utils"
 	"log"
 )
 
 type ClientService struct {
-	store *storage.PostgresStorage
+	store storage.Storage
 }
 
-func NewClientService(store *storage.PostgresStorage) *ClientService {
+func NewClientService(store storage.Storage) *ClientService {
 	return &ClientService{store: store}
 }
 
@@ -25,8 +26,12 @@ func (s *ClientService) RegisterClient(req *models.ClientRegistration) (*models.
 
 	client := &models.Client{
 		RedirectURIs: redirectURIs,
-		GrantTypes:   pq.StringArray{"authorization_code"},
+		GrantTypes:   pq.StringArray{"authorization_code", "refresh_token"},
 	}
+
+	// Generate client credentials here
+	client.ClientID = utils.GenerateRandomString(24)
+	client.Secret = utils.GenerateRandomString(32)
 
 	// Log the client data before storing
 	log.Printf("Client data before storing: RedirectURIs=%v, GrantTypes=%v", client.RedirectURIs, client.GrantTypes)

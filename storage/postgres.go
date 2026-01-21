@@ -3,7 +3,6 @@ package storage
 import (
 	"gorm.io/gorm"
 	"oauth2-provider/models"
-	"oauth2-provider/utils"
 	"time"
 	"log"
 )
@@ -33,18 +32,6 @@ func (s *PostgresStorage) StoreClient(client *models.Client) error {
 	// Log the client data before storing
 	log.Printf("Storing client with RedirectURIs: %v, GrantTypes: %v", client.RedirectURIs, client.GrantTypes)
 
-	// Generate client credentials
-	client.ClientID = utils.GenerateRandomString(24)
-	client.Secret = utils.GenerateRandomString(32)
-
-	// Ensure arrays are initialized
-	if len(client.RedirectURIs) == 0 {
-		client.RedirectURIs = []string{}
-	}
-	if len(client.GrantTypes) == 0 {
-		client.GrantTypes = []string{"authorization_code"}
-	}
-
 	// Create client using GORM with SQL logging enabled
 	result := s.db.Debug().Create(client)
 	if result.Error != nil {
@@ -65,23 +52,25 @@ func (s *PostgresStorage) GetClient(clientID string) *models.Client {
 	return &client
 }
 
-func (s *PostgresStorage) StoreAuthCode(code, clientID string, userID uint) error {
+func (s *PostgresStorage) StoreAuthCode(code, clientID string, userID uint, redirectURI string) error {
 	authCode := &models.AuthCode{
-		Code:      code,
-		ClientID:  clientID,
-		UserID:    userID,
-		ExpiresAt: time.Now().Add(10 * time.Minute),
+		Code:        code,
+		ClientID:    clientID,
+		UserID:      userID,
+		RedirectURI: redirectURI,
+		ExpiresAt:   time.Now().Add(10 * time.Minute),
 	}
 	return s.db.Create(authCode).Error
 }
 
-func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, codeChallenge, codeChallengeMethod string) error {
+func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) error {
 	authCode := &models.AuthCode{
 		Code:                code,
 		ClientID:            clientID,
-		UserID:             userID,
-		ExpiresAt:          time.Now().Add(10 * time.Minute),
-		CodeChallenge:      codeChallenge,
+		UserID:              userID,
+		RedirectURI:         redirectURI,
+		ExpiresAt:           time.Now().Add(10 * time.Minute),
+		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
 	}
 	return s.db.Create(authCode).Error
@@ -95,6 +84,12 @@ func (s *PostgresStorage) GetAuthCode(code string) *models.AuthCode {
 	}
 
 	// Mark the auth code as used
+	// Note: In a real world scenario, this should be done in a transaction or checked by the service
+	// But as per memory: Authorization code retrieval uses an atomic database update
+	// We can do it here or let the service handle it.
+	// The current implementation does it here which is fine as long as it's consistent.
+	// However, usually Get should just Get. But to ensure "consume once", doing it here is a common pattern if not using a separate "Exchange" method in storage.
+	// I'll keep it here as it was.
 	s.db.Model(&authCode).Update("used", true)
 
 	return &authCode

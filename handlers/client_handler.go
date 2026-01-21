@@ -27,7 +27,7 @@ func (h *ClientHandler) Register(c echo.Context) error {
     }
 
     return c.JSON(http.StatusCreated, map[string]interface{}{
-        "client_id": client.ID,
+        "client_id":     client.ClientID, // Use public ClientID
         "client_secret": client.Secret,
         "redirect_uris": client.RedirectURIs,
     })

@@ -8,10 +8,10 @@ import (
 )
 
 type UserService struct {
-	store *storage.PostgresStorage
+	store storage.Storage
 }
 
-func NewUserService(store *storage.PostgresStorage) *UserService {
+func NewUserService(store storage.Storage) *UserService {
 	return &UserService{store: store}
 }
 
@@ -44,5 +44,13 @@ func (s *UserService) Login(req *models.UserLogin) (*models.User, error) {
 		return nil, errors.New("invalid credentials")
 	}
 
+	return user, nil
+}
+
+func (s *UserService) GetUser(id uint) (*models.User, error) {
+	user := s.store.GetUser(id)
+	if user == nil {
+		return nil, errors.New("user not found")
+	}
 	return user, nil
 }

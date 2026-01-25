@@ -5,7 +5,8 @@ import (
 	"net/http"
 	"oauth2-provider/models"
 	"oauth2-provider/services"
-	"strconv"
+	"oauth2-provider/utils"
+	"time"
 )
 
 type UserHandler struct {
@@ -42,8 +43,35 @@ func (h *UserHandler) Login(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
 	}
 
+	// Generate JWT
+	token, err := utils.GenerateJWT(user.ID, 24*time.Hour)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate token")
+	}
+
+	// Set Cookie for browser flow
+	c.SetCookie(&http.Cookie{
+		Name:     "auth_token",
+		Value:    token,
+		HttpOnly: true,
+		Path:     "/",
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Now().Add(24 * time.Hour),
+	})
+
+	// Check for redirect (Browser Flow)
+	continueTo := c.FormValue("continue_to")
+	if continueTo != "" {
+		// Basic validation for continue_to to prevent open redirects is handled in UI,
+		// but server-side we should also ideally check it.
+		// For now, assuming relative path or validated domain.
+		if utils.IsValidRedirect(continueTo) {
+             return c.Redirect(http.StatusFound, continueTo)
+        }
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"message": "Login successful",
-		"user_id": strconv.FormatUint(uint64(user.ID), 10),
+		"token":   token,
+		"user_id": user.ID,
 	})
 }

@@ -74,7 +74,8 @@ func main() {
 	log.Println("Database migration completed successfully")
 
 	// Initialize storage with database
-	store := storage.NewPostgresStorage(db)
+	// Explicitly cast to interface to ensure compliance
+	var store storage.Storage = storage.NewPostgresStorage(db)
 	log.Println("PostgreSQL storage initialized")
 
 	// Initialize services
@@ -84,12 +85,17 @@ func main() {
 	log.Println("Services initialized")
 
 	// Initialize handlers
-	oauthHandler := handlers.NewOAuthHandler(oauthService)
+	htmlHandler := handlers.NewHTMLHandler()
+	oauthHandler := handlers.NewOAuthHandler(oauthService, userService)
 	userHandler := handlers.NewUserHandler(userService)
 	clientHandler := handlers.NewClientHandler(clientService)
 	log.Println("Handlers initialized")
 
 	// Routes
+	// System / HTML
+	e.GET("/", htmlHandler.Index)
+	e.GET("/login", htmlHandler.LoginView)
+
 	// OAuth2 endpoints
 	e.GET("/authorize", oauthHandler.Authorize)
 	e.POST("/token", oauthHandler.Token)

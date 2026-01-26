@@ -12,12 +12,13 @@ type User struct {
 }
 
 type UserLogin struct {
-	Username string `json:"username" validate:"required"`
-	Password string `json:"password" validate:"required"`
+	Username   string `json:"username" form:"username" validate:"required"`
+	Password   string `json:"password" form:"password" validate:"required"`
+	ContinueTo string `json:"continue_to" form:"continue_to"`
 }
 
 type UserRegister struct {
-	Username string `json:"username" validate:"required"`
-	Password string `json:"password" validate:"required"`
-	Email    string `json:"email" validate:"required,email"`
+	Username string `json:"username" form:"username" validate:"required"`
+	Password string `json:"password" form:"password" validate:"required"`
+	Email    string `json:"email" form:"email" validate:"required,email"`
 }

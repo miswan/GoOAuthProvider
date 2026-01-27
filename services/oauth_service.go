@@ -12,10 +12,10 @@ import (
 )
 
 type OAuthService struct {
-	store *storage.PostgresStorage
+	store storage.Storage
 }
 
-func NewOAuthService(store *storage.PostgresStorage) *OAuthService {
+func NewOAuthService(store storage.Storage) *OAuthService {
 	return &OAuthService{store: store}
 }
 
@@ -48,9 +48,9 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod, redirectURI string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod, redirectURI)
 	if err != nil {
 		return "", err
 	}
@@ -75,8 +75,25 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 		return "", "", errors.New("invalid authorization code")
 	}
 
+	// Mark used immediately
+	if err := s.store.MarkAuthCodeUsed(req.Code); err != nil {
+		return "", "", errors.New("authorization code already used or invalid")
+	}
+
+	if authCode.Used {
+		return "", "", errors.New("authorization code already used")
+	}
+
+	if req.RedirectURI != authCode.RedirectURI {
+		return "", "", errors.New("redirect_uri mismatch")
+	}
+
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {
 		return "", "", err
+	}
+
+	if req.ClientID != "" && req.ClientID != authCode.ClientID {
+		return "", "", errors.New("client_id mismatch")
 	}
 
 	// Generate tokens

@@ -12,10 +12,10 @@ import (
 )
 
 type OAuthService struct {
-	store *storage.PostgresStorage
+	store storage.Storage
 }
 
-func NewOAuthService(store *storage.PostgresStorage) *OAuthService {
+func NewOAuthService(store storage.Storage) *OAuthService {
 	return &OAuthService{store: store}
 }
 
@@ -48,9 +48,9 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, redirectURI, codeChallenge, codeChallengeMethod string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, redirectURI, codeChallenge, codeChallengeMethod)
 	if err != nil {
 		return "", err
 	}
@@ -75,7 +75,24 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 		return "", "", errors.New("invalid authorization code")
 	}
 
+	if authCode.Used {
+		return "", "", errors.New("authorization code already used")
+	}
+
+	if authCode.ClientID != req.ClientID {
+		return "", "", errors.New("client_id mismatch")
+	}
+
+	if authCode.RedirectURI != req.RedirectURI {
+		return "", "", errors.New("redirect_uri mismatch")
+	}
+
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {
+		return "", "", err
+	}
+
+	// Mark code as used
+	if err := s.store.MarkAuthCodeUsed(req.Code); err != nil {
 		return "", "", err
 	}
 
@@ -135,6 +152,8 @@ func (s *OAuthService) validatePKCE(authCode *models.AuthCode, codeVerifier stri
 		h := sha256.New()
 		h.Write([]byte(codeVerifier))
 		computedChallenge = base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+		// Remove padding if any (though RawURLEncoding usually doesn't have it)
+		computedChallenge = strings.TrimRight(computedChallenge, "=")
 	} else { // plain
 		computedChallenge = codeVerifier
 	}

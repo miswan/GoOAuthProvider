@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"gorm.io/gorm"
 	"oauth2-provider/models"
 	"oauth2-provider/utils"
@@ -24,6 +25,15 @@ func (s *PostgresStorage) GetUserByUsername(username string) *models.User {
 	var user models.User
 	if err := s.db.Where("username = ?", username).First(&user).Error; err != nil {
 		log.Printf("Error getting user by username: %v", err)
+		return nil
+	}
+	return &user
+}
+
+func (s *PostgresStorage) GetUser(id uint) *models.User {
+	var user models.User
+	if err := s.db.First(&user, id).Error; err != nil {
+		log.Printf("Error getting user by id: %v", err)
 		return nil
 	}
 	return &user
@@ -75,13 +85,14 @@ func (s *PostgresStorage) StoreAuthCode(code, clientID string, userID uint) erro
 	return s.db.Create(authCode).Error
 }
 
-func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID uint, codeChallenge, codeChallengeMethod string) error {
+func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID, redirectURI string, userID uint, codeChallenge, codeChallengeMethod string) error {
 	authCode := &models.AuthCode{
 		Code:                code,
 		ClientID:            clientID,
-		UserID:             userID,
-		ExpiresAt:          time.Now().Add(10 * time.Minute),
-		CodeChallenge:      codeChallenge,
+		RedirectURI:         redirectURI,
+		UserID:              userID,
+		ExpiresAt:           time.Now().Add(10 * time.Minute),
+		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
 	}
 	return s.db.Create(authCode).Error
@@ -93,11 +104,18 @@ func (s *PostgresStorage) GetAuthCode(code string) *models.AuthCode {
 		log.Printf("Error getting auth code: %v", err)
 		return nil
 	}
-
-	// Mark the auth code as used
-	s.db.Model(&authCode).Update("used", true)
-
 	return &authCode
+}
+
+func (s *PostgresStorage) MarkAuthCodeUsed(code string) error {
+	result := s.db.Model(&models.AuthCode{}).Where("code = ? AND used = ?", code, false).Update("used", true)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("authorization code already used or invalid")
+	}
+	return nil
 }
 
 func (s *PostgresStorage) StoreRefreshToken(token string, userID uint, clientID string) error {

@@ -9,6 +9,7 @@ type AuthCode struct {
 	gorm.Model
 	Code               string
 	ClientID           string
+	RedirectURI        string
 	UserID             uint
 	ExpiresAt          time.Time
 	CodeChallenge      string

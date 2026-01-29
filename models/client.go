@@ -6,10 +6,10 @@ import (
 
 type Client struct {
 	gorm.Model
-	ClientID     string   `gorm:"column:client_id;uniqueIndex:idx_client_id;not null"`
-	Secret       string   `gorm:"column:secret;not null"`
-	RedirectURIs []string `gorm:"column:redirect_uris;type:text[];serializer:json"`
-	GrantTypes   []string `gorm:"column:grant_types;type:text[];serializer:json"`
+	ClientID     string   `gorm:"column:client_id;uniqueIndex:idx_client_id;not null" json:"client_id"`
+	Secret       string   `gorm:"column:secret;not null" json:"client_secret"`
+	RedirectURIs []string `gorm:"column:redirect_uris;type:text[];serializer:json" json:"redirect_uris"`
+	GrantTypes   []string `gorm:"column:grant_types;type:text[];serializer:json" json:"grant_types"`
 }
 
 func (Client) TableName() string {

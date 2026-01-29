@@ -1,17 +1,16 @@
 package services
 
 import (
-	"github.com/lib/pq"
+	"log"
 	"oauth2-provider/models"
 	"oauth2-provider/storage"
-	"log"
 )
 
 type ClientService struct {
-	store *storage.PostgresStorage
+	store storage.Storage
 }
 
-func NewClientService(store *storage.PostgresStorage) *ClientService {
+func NewClientService(store storage.Storage) *ClientService {
 	return &ClientService{store: store}
 }
 
@@ -19,13 +18,12 @@ func (s *ClientService) RegisterClient(req *models.ClientRegistration) (*models.
 	// Log the incoming request
 	log.Printf("Registering new client with RedirectURIs: %v", req.RedirectURIs)
 
-	// Convert []string to pq.StringArray explicitly
-	redirectURIs := make(pq.StringArray, len(req.RedirectURIs))
-	copy(redirectURIs, req.RedirectURIs)
+	// Direct assignment since we use GORM json serializer
+	redirectURIs := req.RedirectURIs
 
 	client := &models.Client{
 		RedirectURIs: redirectURIs,
-		GrantTypes:   pq.StringArray{"authorization_code"},
+		GrantTypes:   []string{"authorization_code"},
 	}
 
 	// Log the client data before storing

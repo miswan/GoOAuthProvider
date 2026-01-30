@@ -13,6 +13,7 @@ type AuthCode struct {
 	ExpiresAt          time.Time
 	CodeChallenge      string
 	CodeChallengeMethod string
+	RedirectURI        string
 	Used               bool
 }
 

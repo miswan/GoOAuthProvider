@@ -7,13 +7,14 @@ import (
 
 type AuthCode struct {
 	gorm.Model
-	Code               string
-	ClientID           string
-	UserID             uint
-	ExpiresAt          time.Time
-	CodeChallenge      string
+	Code                string
+	ClientID            string
+	UserID              uint
+	ExpiresAt           time.Time
+	RedirectURI         string
+	CodeChallenge       string
 	CodeChallengeMethod string
-	Used               bool
+	Used                bool
 }
 
 type RefreshToken struct {

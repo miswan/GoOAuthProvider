@@ -37,45 +37,47 @@ func main() {
 	e.Use(echoMiddleware.RateLimiter(echoMiddleware.NewRateLimiterMemoryStore(20)))
 	log.Println("Middleware configured successfully")
 
+	var store storage.Storage
+
 	log.Println("Attempting to connect to database...")
 	// Initialize database
 	db, err := config.InitDB()
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Printf("Failed to connect to database: %v. Switching to Memory Storage.", err)
+		store = storage.NewMemoryStorage()
+	} else {
+		log.Println("Successfully connected to database")
+		log.Println("Starting database migration...")
+
+		// Migrate User model
+		if err := migrateModel(db, &models.User{}, "User"); err != nil {
+			log.Fatalf("Database migration failed at User model: %v", err)
+		}
+
+		// Migrate Client model with extra logging
+		log.Println("Attempting to migrate Client model...")
+		if err := migrateModel(db, &models.Client{}, "Client"); err != nil {
+			// Print the schema of the Client model for debugging
+			log.Printf("Client model schema: %+v", &models.Client{})
+			log.Fatalf("Database migration failed at Client model: %v", err)
+		}
+
+		// Migrate AuthCode model
+		if err := migrateModel(db, &models.AuthCode{}, "AuthCode"); err != nil {
+			log.Fatalf("Database migration failed at AuthCode model: %v", err)
+		}
+
+		// Migrate RefreshToken model
+		if err := migrateModel(db, &models.RefreshToken{}, "RefreshToken"); err != nil {
+			log.Fatalf("Database migration failed at RefreshToken model: %v", err)
+		}
+
+		log.Println("Database migration completed successfully")
+
+		// Initialize storage with database
+		store = storage.NewPostgresStorage(db)
+		log.Println("PostgreSQL storage initialized")
 	}
-	log.Println("Successfully connected to database")
-
-	// Auto migrate database schema one by one with detailed error logging
-	log.Println("Starting database migration...")
-
-	// Migrate User model
-	if err := migrateModel(db, &models.User{}, "User"); err != nil {
-		log.Fatalf("Database migration failed at User model: %v", err)
-	}
-
-	// Migrate Client model with extra logging
-	log.Println("Attempting to migrate Client model...")
-	if err := migrateModel(db, &models.Client{}, "Client"); err != nil {
-		// Print the schema of the Client model for debugging
-		log.Printf("Client model schema: %+v", &models.Client{})
-		log.Fatalf("Database migration failed at Client model: %v", err)
-	}
-
-	// Migrate AuthCode model
-	if err := migrateModel(db, &models.AuthCode{}, "AuthCode"); err != nil {
-		log.Fatalf("Database migration failed at AuthCode model: %v", err)
-	}
-
-	// Migrate RefreshToken model
-	if err := migrateModel(db, &models.RefreshToken{}, "RefreshToken"); err != nil {
-		log.Fatalf("Database migration failed at RefreshToken model: %v", err)
-	}
-
-	log.Println("Database migration completed successfully")
-
-	// Initialize storage with database
-	store := storage.NewPostgresStorage(db)
-	log.Println("PostgreSQL storage initialized")
 
 	// Initialize services
 	oauthService := services.NewOAuthService(store)
@@ -84,12 +86,17 @@ func main() {
 	log.Println("Services initialized")
 
 	// Initialize handlers
-	oauthHandler := handlers.NewOAuthHandler(oauthService)
+	htmlHandler := handlers.NewHTMLHandler()
+	oauthHandler := handlers.NewOAuthHandler(oauthService, userService)
 	userHandler := handlers.NewUserHandler(userService)
 	clientHandler := handlers.NewClientHandler(clientService)
 	log.Println("Handlers initialized")
 
 	// Routes
+	// Web UI
+	e.GET("/", htmlHandler.Index)
+	e.GET("/login", htmlHandler.Login)
+
 	// OAuth2 endpoints
 	e.GET("/authorize", oauthHandler.Authorize)
 	e.POST("/token", oauthHandler.Token)

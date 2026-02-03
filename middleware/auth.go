@@ -8,17 +8,27 @@ import (
 
 func JWTAuth(next echo.HandlerFunc) echo.HandlerFunc {
     return func(c echo.Context) error {
+        token := ""
+
         authHeader := c.Request().Header.Get("Authorization")
-        if authHeader == "" {
+        if authHeader != "" {
+            parts := strings.Split(authHeader, " ")
+            if len(parts) == 2 && parts[0] == "Bearer" {
+                token = parts[1]
+            }
+        }
+
+        if token == "" {
+            cookie, err := c.Cookie("auth_token")
+            if err == nil {
+                token = cookie.Value
+            }
+        }
+
+        if token == "" {
             return echo.ErrUnauthorized
         }
 
-        parts := strings.Split(authHeader, " ")
-        if len(parts) != 2 || parts[0] != "Bearer" {
-            return echo.ErrUnauthorized
-        }
-
-        token := parts[1]
         claims, err := utils.ValidateJWT(token)
         if err != nil {
             return echo.ErrUnauthorized

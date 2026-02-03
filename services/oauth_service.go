@@ -12,10 +12,10 @@ import (
 )
 
 type OAuthService struct {
-	store *storage.PostgresStorage
+	store storage.Storage
 }
 
-func NewOAuthService(store *storage.PostgresStorage) *OAuthService {
+func NewOAuthService(store storage.Storage) *OAuthService {
 	return &OAuthService{store: store}
 }
 
@@ -73,6 +73,10 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 	authCode := s.store.GetAuthCode(req.Code)
 	if authCode == nil {
 		return "", "", errors.New("invalid authorization code")
+	}
+
+	if err := s.store.MarkAuthCodeUsed(req.Code); err != nil {
+		return "", "", errors.New("authorization code already used or invalid")
 	}
 
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {

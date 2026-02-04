@@ -8,8 +8,8 @@ type Client struct {
 	gorm.Model
 	ClientID     string   `gorm:"column:client_id;uniqueIndex:idx_client_id;not null"`
 	Secret       string   `gorm:"column:secret;not null"`
-	RedirectURIs []string `gorm:"column:redirect_uris;type:text[];serializer:json"`
-	GrantTypes   []string `gorm:"column:grant_types;type:text[];serializer:json"`
+	RedirectURIs []string `gorm:"column:redirect_uris;serializer:json"`
+	GrantTypes   []string `gorm:"column:grant_types;serializer:json"`
 }
 
 func (Client) TableName() string {
@@ -25,7 +25,7 @@ type AuthorizationRequest struct {
 	RedirectURI         string `query:"redirect_uri" validate:"required,url"`
 	ResponseType        string `query:"response_type" validate:"required,oneof=code"`
 	State               string `query:"state"`
-	CodeChallenge      string `query:"code_challenge" validate:"required"`
+	CodeChallenge       string `query:"code_challenge" validate:"required"`
 	CodeChallengeMethod string `query:"code_challenge_method" validate:"required,oneof=S256 plain"`
 }
 

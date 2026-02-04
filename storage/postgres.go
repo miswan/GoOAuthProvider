@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"gorm.io/gorm"
 	"oauth2-provider/models"
 	"oauth2-provider/utils"
@@ -29,15 +30,28 @@ func (s *PostgresStorage) GetUserByUsername(username string) *models.User {
 	return &user
 }
 
+func (s *PostgresStorage) GetUser(id uint) *models.User {
+	var user models.User
+	if err := s.db.First(&user, id).Error; err != nil {
+		log.Printf("Error getting user by id: %v", err)
+		return nil
+	}
+	return &user
+}
+
 func (s *PostgresStorage) StoreClient(client *models.Client) error {
 	// Log the client data before storing
 	log.Printf("Storing client with RedirectURIs: %v, GrantTypes: %v", client.RedirectURIs, client.GrantTypes)
 
-	// Generate client credentials
-	client.ClientID = utils.GenerateRandomString(24)
-	client.Secret = utils.GenerateRandomString(32)
+	// Generate client credentials if not present (handled by service usually but just in case)
+	if client.ClientID == "" {
+		client.ClientID = utils.GenerateRandomString(24)
+	}
+	if client.Secret == "" {
+		client.Secret = utils.GenerateRandomString(32)
+	}
 
-	// Ensure arrays are initialized
+	// Ensure slices are initialized
 	if len(client.RedirectURIs) == 0 {
 		client.RedirectURIs = []string{}
 	}
@@ -89,15 +103,23 @@ func (s *PostgresStorage) StoreAuthCodeWithPKCE(code, clientID string, userID ui
 
 func (s *PostgresStorage) GetAuthCode(code string) *models.AuthCode {
 	var authCode models.AuthCode
+	// Only return if not used and not expired
 	if err := s.db.Where("code = ? AND expires_at > ? AND used = ?", code, time.Now(), false).First(&authCode).Error; err != nil {
 		log.Printf("Error getting auth code: %v", err)
 		return nil
 	}
-
-	// Mark the auth code as used
-	s.db.Model(&authCode).Update("used", true)
-
 	return &authCode
+}
+
+func (s *PostgresStorage) MarkAuthCodeUsed(code string) error {
+	result := s.db.Model(&models.AuthCode{}).Where("code = ? AND used = ?", code, false).Update("used", true)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("authorization code invalid or already used")
+	}
+	return nil
 }
 
 func (s *PostgresStorage) StoreRefreshToken(token string, userID uint, clientID string) error {

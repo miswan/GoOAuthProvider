@@ -12,10 +12,10 @@ import (
 )
 
 type OAuthService struct {
-	store *storage.PostgresStorage
+	store storage.Storage
 }
 
-func NewOAuthService(store *storage.PostgresStorage) *OAuthService {
+func NewOAuthService(store storage.Storage) *OAuthService {
 	return &OAuthService{store: store}
 }
 
@@ -73,6 +73,11 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 	authCode := s.store.GetAuthCode(req.Code)
 	if authCode == nil {
 		return "", "", errors.New("invalid authorization code")
+	}
+
+	// Mark as used immediately to prevent replay
+	if err := s.store.MarkAuthCodeUsed(req.Code); err != nil {
+		return "", "", errors.New("invalid authorization code or already used")
 	}
 
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {
@@ -135,6 +140,8 @@ func (s *OAuthService) validatePKCE(authCode *models.AuthCode, codeVerifier stri
 		h := sha256.New()
 		h.Write([]byte(codeVerifier))
 		computedChallenge = base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+		// Remove padding if present (RawURLEncoding handles this but just to be sure)
+		computedChallenge = strings.TrimRight(computedChallenge, "=")
 	} else { // plain
 		computedChallenge = codeVerifier
 	}

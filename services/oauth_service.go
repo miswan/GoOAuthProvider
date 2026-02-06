@@ -7,15 +7,14 @@ import (
 	"oauth2-provider/models"
 	"oauth2-provider/storage"
 	"oauth2-provider/utils"
-	"strings"
 	"time"
 )
 
 type OAuthService struct {
-	store *storage.PostgresStorage
+	store storage.Storage
 }
 
-func NewOAuthService(store *storage.PostgresStorage) *OAuthService {
+func NewOAuthService(store storage.Storage) *OAuthService {
 	return &OAuthService{store: store}
 }
 
@@ -48,9 +47,9 @@ func (s *OAuthService) ValidateAuthorizationRequest(req *models.AuthorizationReq
 	return nil
 }
 
-func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, codeChallenge, codeChallengeMethod string) (string, error) {
+func (s *OAuthService) GenerateAuthorizationCode(clientID string, userID uint, redirectURI string, codeChallenge, codeChallengeMethod string) (string, error) {
 	code := utils.GenerateRandomString(32)
-	err := s.store.StoreAuthCodeWithPKCE(code, clientID, userID, codeChallenge, codeChallengeMethod)
+	err := s.store.StoreAuthCode(code, clientID, userID, redirectURI, codeChallenge, codeChallengeMethod)
 	if err != nil {
 		return "", err
 	}
@@ -75,7 +74,38 @@ func (s *OAuthService) handleAuthorizationCodeGrant(req *models.TokenRequest) (s
 		return "", "", errors.New("invalid authorization code")
 	}
 
+	// Validate Client ID matches code
+	if authCode.ClientID != req.ClientID {
+		return "", "", errors.New("code does not belong to client")
+	}
+
+	// Validate Client Credentials
+	client := s.store.GetClient(req.ClientID)
+	if client == nil {
+		return "", "", errors.New("invalid client")
+	}
+
+	// Confidential clients must provide secret
+	if client.Secret != "" {
+		if req.ClientSecret == "" {
+			return "", "", errors.New("client secret required")
+		}
+		if client.Secret != req.ClientSecret {
+			return "", "", errors.New("invalid client credentials")
+		}
+	}
+
+	// Validate Redirect URI matches
+	if authCode.RedirectURI != req.RedirectURI {
+		return "", "", errors.New("redirect_uri mismatch")
+	}
+
 	if err := s.validatePKCE(authCode, req.CodeVerifier); err != nil {
+		return "", "", err
+	}
+
+	// Mark code as used
+	if err := s.store.MarkAuthCodeUsed(req.Code); err != nil {
 		return "", "", err
 	}
 
@@ -104,7 +134,7 @@ func (s *OAuthService) handleRefreshTokenGrant(req *models.TokenRequest) (string
 		return "", "", errors.New("invalid refresh token")
 	}
 
-	// Delete the used refresh token
+	// Delete the used refresh token (Rotation)
 	if err := s.store.DeleteRefreshToken(req.RefreshToken); err != nil {
 		return "", "", err
 	}
@@ -139,7 +169,7 @@ func (s *OAuthService) validatePKCE(authCode *models.AuthCode, codeVerifier stri
 		computedChallenge = codeVerifier
 	}
 
-	if !strings.EqualFold(computedChallenge, authCode.CodeChallenge) {
+	if computedChallenge != authCode.CodeChallenge {
 		return errors.New("invalid code verifier")
 	}
 
